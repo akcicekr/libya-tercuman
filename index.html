@@ -1,0 +1,457 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0e6b62">
+<title>Libya Tercüman</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Readex+Pro:wght@400;500;600;700&family=Noto+Naskh+Arabic:wght@500;700&display=swap">
+<style>
+:root{
+  --bg:#f3efe6; --surface:#fffdf8; --line:#e2d9c6; --fg:#1f2a2b; --muted:#6b706a;
+  --accent:#0e6b62; --accent-ink:#fff; --sand:#c9a227; --sand-ink:#1f1a0a; --soft:#e4f0ec; --err:#a23b2a; --rec:#c0392b;
+  --f-ui:"Readex Pro",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --f-ar:"Noto Naskh Arabic","Readex Pro",Roboto,"Arial",serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#141a1a; --surface:#1d2525; --line:#2f3a39; --fg:#ece6d8; --muted:#9aa29c;
+  --accent:#3fb3a3; --accent-ink:#0d1616; --sand:#d8b44a; --soft:#1f3532; --err:#e07a64; --rec:#e0604c; color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--fg);height:100%}
+body{font-family:var(--f-ui);font-size:16px;line-height:1.5;-webkit-tap-highlight-color:transparent}
+.app{max-width:560px;margin:0 auto;min-height:100%;display:flex;flex-direction:column;
+  padding:calc(12px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) calc(24px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));gap:14px}
+header{display:flex;align-items:center;justify-content:space-between;gap:8px}
+h1{font-size:1.35rem;font-weight:700;margin:0}
+h1 span{color:var(--accent)}
+.icon-btn{font:inherit;border:1px solid var(--line);background:var(--surface);color:var(--fg);border-radius:12px;width:44px;height:44px;font-size:1.2rem;cursor:pointer}
+.tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:5px}
+.tab{font:inherit;font-size:.95rem;font-weight:500;border:0;border-radius:10px;padding:11px 4px;background:transparent;color:var(--muted);cursor:pointer}
+.tab[aria-selected="true"]{background:var(--accent);color:var(--accent-ink)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:12px}
+.dir{display:flex;align-items:center;justify-content:space-between;gap:8px;font-weight:600}
+.pill{font:inherit;font-size:.85rem;border:1px solid var(--line);background:var(--bg);color:var(--fg);border-radius:999px;padding:7px 12px;cursor:pointer}
+textarea,input[type=text],input[type=password],select{font:inherit;width:100%;border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--bg);color:var(--fg)}
+textarea{font-size:1.1rem;min-height:100px;resize:vertical}
+.ar{font-family:var(--f-ar);direction:rtl;font-size:1.25rem}
+:focus-visible{outline:3px solid var(--sand);outline-offset:2px}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.btn{font:inherit;font-weight:600;border:0;border-radius:12px;padding:13px 16px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.primary{background:var(--accent);color:var(--accent-ink);flex:1 1 140px}
+.ghost{background:var(--bg);color:var(--fg);border:1px solid var(--line)}
+.btn:disabled{opacity:.5;cursor:default}
+.rec{background:var(--rec)!important;color:#fff!important;border-color:var(--rec)!important;animation:pulse 1.2s infinite}
+@keyframes pulse{50%{opacity:.75}}
+.hint{font-size:.84rem;color:var(--muted);margin:0}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden}
+.seg button{font:inherit;font-size:.82rem;border:0;background:transparent;color:var(--muted);padding:6px 12px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--soft);color:var(--accent);font-weight:600}
+.tag{font-size:.72rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.ar-out{font-family:var(--f-ar);direction:rtl;text-align:right;font-size:1.65rem;line-height:1.7;font-weight:700;margin:0;overflow-wrap:anywhere}
+.tr-out{font-size:1.3rem;font-weight:600;margin:0;overflow-wrap:anywhere}
+.latin{font-size:1rem;color:var(--accent);font-style:italic;margin:0;overflow-wrap:anywhere}
+.note{font-size:.86rem;color:var(--muted);background:var(--soft);border-radius:10px;padding:8px 10px;margin:0}
+.orig{font-size:.92rem;color:var(--muted);margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+.orig.arx{font-family:var(--f-ar);direction:rtl;text-align:right;font-size:1.1rem}
+.status{font-size:.92rem;margin:0;color:var(--muted)}
+.status.err{color:var(--err)}
+.spinner{display:inline-block;width:16px;height:16px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spin .7s linear infinite;vertical-align:-3px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.conv{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.talk{font:inherit;border:0;border-radius:16px;padding:22px 8px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;font-weight:700;font-size:1.05rem}
+.talk .mic{font-size:2rem;line-height:1}
+.talk small{font-weight:400;font-size:.78rem;opacity:.85}
+.talk.tr{background:var(--accent);color:var(--accent-ink)}
+.talk.ly{background:var(--sand);color:var(--sand-ink)}
+.talk.ly .lbl{font-family:var(--f-ar)}
+.live{min-height:1.5em;font-size:1rem;margin:0;color:var(--fg)}
+.bubbles{display:flex;flex-direction:column;gap:8px}
+.bub{border-radius:14px;padding:10px 12px;max-width:94%;display:flex;flex-direction:column;gap:4px}
+.bub.me{align-self:flex-start;background:var(--soft)}
+.bub.them{align-self:flex-end;background:var(--bg);border:1px solid var(--line)}
+.bub .ar-out{font-size:1.3rem}.bub .tr-out{font-size:1.05rem}
+.bub .acts{display:flex;gap:6px}
+.mini{font:inherit;font-size:.8rem;border:1px solid var(--line);background:var(--surface);color:var(--fg);border-radius:999px;padding:4px 10px;cursor:pointer}
+.photo{display:flex;flex-direction:column;align-items:center;gap:10px;border:2px dashed var(--line);border-radius:14px;padding:16px;text-align:center}
+.photo img{max-height:240px;border-radius:10px;max-width:100%}
+.overlay{position:fixed;inset:0;z-index:20;background:var(--surface);display:flex;flex-direction:column;justify-content:center;gap:18px;overflow:auto;
+  padding:calc(24px + env(safe-area-inset-top,0px)) max(20px,env(safe-area-inset-right,0px)) calc(24px + env(safe-area-inset-bottom,0px)) max(20px,env(safe-area-inset-left,0px))}
+.overlay .ar-out{font-size:2.5rem}
+.sheet{position:fixed;inset:0;z-index:30;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;justify-content:center}
+.sheet .panel{background:var(--surface);width:100%;max-width:560px;border-radius:18px 18px 0 0;max-height:92%;overflow:auto;display:flex;flex-direction:column;gap:12px;
+  padding:18px max(16px,env(safe-area-inset-right,0px)) calc(18px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+.panel h2{margin:0;font-size:1.15rem}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-weight:600;font-size:.9rem}
+.check{display:flex;gap:10px;align-items:center;font-size:.95rem}
+.check input{width:22px;height:22px}
+a{color:var(--accent)}
+.hist{display:flex;flex-direction:column;gap:8px}
+.item{font:inherit;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;color:var(--fg);cursor:pointer;display:flex;flex-direction:column;gap:2px}
+.item .a{font-family:var(--f-ar);direction:rtl;text-align:right;font-size:1.05rem}
+.item .t{font-size:.9rem;color:var(--muted)}
+.hhead{display:flex;justify-content:space-between;align-items:center}
+.link{font:inherit;font-size:.84rem;background:none;border:0;color:var(--muted);text-decoration:underline;cursor:pointer}
+.setup{border-color:var(--sand)}
+.setup ol{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px}
+@media (prefers-reduced-motion:reduce){.rec,.spinner{animation:none}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>Libya <span>Tercüman</span></h1>
+    <button class="icon-btn" id="openSettings" aria-label="Ayarlar">⚙️</button>
+  </header>
+
+  <!-- First-run setup -->
+  <section class="card setup" id="setup" hidden>
+    <strong>İlk kurulum: çeviri anahtarı</strong>
+    <ol class="hint">
+      <li><a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> adresini açın, Google hesabınızla girin.</li>
+      <li>“Create API key” (API anahtarı oluştur) deyin, çıkan anahtarı kopyalayın.</li>
+      <li>Aşağıya yapıştırıp “Kaydet”e basın.</li>
+    </ol>
+    <input type="password" id="setupKey" placeholder="AIza… ile başlayan anahtar" autocomplete="off">
+    <button class="btn primary" id="setupSave">Kaydet</button>
+    <p class="hint">Anahtar sadece bu telefonda saklanır, sadece Google’a gönderilir.</p>
+  </section>
+
+  <nav class="tabs" role="tablist">
+    <button class="tab" role="tab" aria-selected="true" data-v="conv">🎙️ Konuşma</button>
+    <button class="tab" role="tab" aria-selected="false" data-v="text">✍️ Yazı</button>
+    <button class="tab" role="tab" aria-selected="false" data-v="photo">📷 Resim</button>
+  </nav>
+
+  <!-- CONVERSATION -->
+  <section class="card" id="v-conv">
+    <div class="conv">
+      <button class="talk tr" id="talkTr"><span class="mic">🎤</span><span class="lbl">Türkçe konuş</span><small>Ben konuşuyorum</small></button>
+      <button class="talk ly" id="talkLy"><span class="mic">🎤</span><span class="lbl">تكلم بالليبي</span><small>Libyalı konuşuyor</small></button>
+    </div>
+    <p class="live" id="live"></p>
+    <p class="status" id="convStatus">Kendi düğmenize basın ve konuşun. Bitince otomatik çevirip sesli okur.</p>
+    <div class="bubbles" id="bubbles"></div>
+  </section>
+
+  <!-- TEXT -->
+  <section class="card" id="v-text" hidden>
+    <div class="dir">
+      <span id="dirLabel">Türkçe → Libya Arapçası</span>
+      <button class="pill" id="swap">⇄ Yön</button>
+    </div>
+    <textarea id="src" placeholder="Türkçe yazın…"></textarea>
+    <div class="row">
+      <button class="btn primary" id="go">Çevir</button>
+      <button class="btn ghost" id="mic">🎤</button>
+      <button class="btn ghost" id="clear">Temizle</button>
+    </div>
+  </section>
+
+  <!-- PHOTO -->
+  <section class="card" id="v-photo" hidden>
+    <div class="photo">
+      <img id="preview" alt="Seçilen resim" hidden>
+      <div class="row" style="justify-content:center">
+        <button class="btn primary" id="camBtn">📷 Fotoğraf çek</button>
+        <button class="btn ghost" id="galBtn">🖼️ Galeriden seç</button>
+      </div>
+      <span class="hint">Tabela, menü, fatura, belge, ekran görüntüsü… İçindeki yazıyı okuyup çevirir.</span>
+    </div>
+    <input type="file" id="camFile" accept="image/*" capture="environment" hidden>
+    <input type="file" id="galFile" accept="image/*" hidden>
+    <button class="btn primary" id="photoGo" disabled>Resmi oku ve çevir</button>
+  </section>
+
+  <!-- RESULT -->
+  <section class="card" id="out" hidden aria-live="polite">
+    <span class="tag" id="outTag"></span>
+    <p class="orig" id="outOrig"></p>
+    <p class="ar-out" id="outMain"></p>
+    <p class="latin" id="outLatin"></p>
+    <p class="note" id="outNote"></p>
+    <div class="row">
+      <button class="btn ghost" id="speak">🔊 Oku</button>
+      <button class="btn ghost" id="copy">Kopyala</button>
+      <button class="btn ghost" id="big">⛶ Büyük</button>
+    </div>
+  </section>
+  <p class="status" id="status" hidden></p>
+
+  <section class="hist" id="histWrap" hidden>
+    <div class="hhead"><span class="tag">Son çeviriler</span><button class="link" id="hclear">Temizle</button></div>
+    <div id="hist" class="hist"></div>
+  </section>
+</div>
+
+<div class="overlay" id="bigView" hidden>
+  <p class="ar-out" id="bigMain"></p>
+  <p class="latin" id="bigLatin"></p>
+  <button class="btn ghost" id="bigClose">Kapat</button>
+</div>
+
+<div class="sheet" id="settings" hidden>
+  <div class="panel">
+    <h2>Ayarlar</h2>
+    <div class="field"><label for="sKey">Gemini API anahtarı</label>
+      <input type="password" id="sKey" autocomplete="off">
+      <span class="hint">Anahtar almak için: <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a></span></div>
+    <div class="field"><label>Çeviri modu</label>
+      <div class="seg"><button id="mFast" aria-pressed="true">Hızlı</button><button id="mGood" aria-pressed="false">En doğru</button></div></div>
+    <div class="field"><label for="sFast">Hızlı model</label><input type="text" id="sFast"></div>
+    <div class="field"><label for="sGood">Doğru model</label><input type="text" id="sGood">
+      <span class="hint">Google model adları değişirse buradan güncelleyin.</span></div>
+    <div class="field"><label for="sArLang">Arapça ses tanıma dili</label>
+      <select id="sArLang">
+        <option value="ar-LY">Libya (ar-LY)</option>
+        <option value="ar-TN">Tunus (ar-TN)</option>
+        <option value="ar-EG">Mısır (ar-EG)</option>
+        <option value="ar-SA">Standart / Suudi (ar-SA)</option>
+      </select>
+      <span class="hint">Telefon Libya ağzını iyi algılamazsa diğerlerini deneyin.</span></div>
+    <label class="check"><input type="checkbox" id="sAuto"> Konuşmada çeviriyi otomatik sesli oku</label>
+    <div class="field"><label for="sRate">Okuma hızı</label><input type="range" id="sRate" min="0.6" max="1.2" step="0.1"></div>
+    <button class="btn primary" id="sSave">Kaydet</button>
+    <button class="btn ghost" id="sClose">Kapat</button>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+const $=id=>document.getElementById(id);
+const DEF={key:"",fast:"gemini-3.5-flash-lite",good:"gemini-3.8-flash",mode:"fast",arLang:"ar-LY",auto:true,rate:0.9};
+let cfg=Object.assign({},DEF);
+try{Object.assign(cfg,JSON.parse(localStorage.getItem("lt_cfg")||"{}"));}catch(e){}
+function saveCfg(){try{localStorage.setItem("lt_cfg",JSON.stringify(cfg));}catch(e){}}
+
+const RULES=`Sen Türkler ile Libyalılar arasında çalışan uzman bir tercümansın.
+- Libya Arapçası (Trablus ağzı, günlük konuşma dili) kullan. Fusha yerine Libyalıların gerçekten konuştuğu kelimeleri seç (örn. شن/شنو, قداش, باهي, توا, نبي, هلبا, كيفاش, وين).
+- Arapça metni Arap harfleriyle, harekesiz yaz.
+- Okunuşu ("latin") bir Türkün rahat okuyacağı şekilde Türkçe harflerle yaz (ş, ç, ğ, uzun sesliler için â, î, û).
+- Anlamı koru, doğal ve kibar konuş. Teknik/iş terimlerini (elektrik, pompa, inşaat vb.) doğru çevir; Libya'da yaygın kullanılan karşılığı (gerekirse İtalyanca/İngilizce kökenli) tercih et.
+- Sadece istenen JSON'u döndür.`;
+
+/* ---------- Gemini ---------- */
+async function gemini(prompt, imageB64, mime){
+  if(!cfg.key){$("setup").hidden=false;throw {code:"nokey"};}
+  const model=(cfg.mode==="good"?cfg.good:cfg.fast).trim();
+  const parts=[{text:prompt}];
+  if(imageB64)parts.push({inline_data:{mime_type:mime||"image/jpeg",data:imageB64}});
+  let res;
+  try{
+    res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,{
+      method:"POST",headers:{"Content-Type":"application/json","x-goog-api-key":cfg.key},
+      body:JSON.stringify({contents:[{role:"user",parts}],generationConfig:{temperature:0.3,responseMimeType:"application/json"}})});
+  }catch(e){throw {code:"net"};}
+  let data={};try{data=await res.json();}catch(e){}
+  if(!res.ok){
+    const msg=(data.error&&data.error.message)||"";
+    if(res.status===400&&/API key/i.test(msg))throw {code:"badkey"};
+    if(res.status===403)throw {code:"forbidden",msg};
+    if(res.status===404)throw {code:"model",msg};
+    if(res.status===429)throw {code:"quota"};
+    throw {code:"api",msg:res.status+" "+msg};
+  }
+  const txt=(((data.candidates||[])[0]||{}).content||{}).parts?.map(p=>p.text||"").join("")||"";
+  if(!txt)throw {code:"empty"};
+  return parseJSON(txt);
+}
+function parseJSON(t){
+  try{return JSON.parse(t);}catch(e){}
+  const m=t.match(/\{[\s\S]*\}/);if(m){try{return JSON.parse(m[0]);}catch(e){}}
+  throw {code:"empty"};
+}
+function errText(e){
+  switch(e&&e.code){
+    case "nokey":return "Önce çeviri anahtarını girin (üstteki kurulum).";
+    case "badkey":return "Anahtar geçersiz. Ayarlardan doğru anahtarı yapıştırın.";
+    case "forbidden":return "Google erişimi reddetti. Anahtarın etkin olduğundan emin olun.";
+    case "model":return "Model adı bulunamadı. Ayarlar’dan model adını güncelleyin.";
+    case "quota":return "Ücretsiz kota doldu veya çok sık istek gitti. Biraz bekleyip tekrar deneyin.";
+    case "net":return "İnternet bağlantısı yok veya zayıf.";
+    case "empty":return "Cevap düzgün gelmedi, tekrar deneyin.";
+    default:return "Hata: "+((e&&e.msg)||"bilinmeyen sorun");
+  }
+}
+const P_TR=t=>RULES+`\n\nAşağıdaki Türkçe metni Libya Arapçasına çevir. JSON: {"arabic":"…","latin":"…","note":"gerekirse tek satır kısa Türkçe not, yoksa boş"}\n\nMetin:\n`+t;
+const P_LY=t=>RULES+`\n\nAşağıdaki metin Libya Arapçası veya başka bir Arapça (Arap ya da Latin harfli olabilir; ses tanımadan geldiyse küçük hatalar olabilir, anlamı tahmin et). Türkçeye doğal şekilde çevir. JSON: {"turkish":"…","arabic":"metnin düzeltilmiş Arap harfli hali","latin":"Arapçanın Türkçe harflerle okunuşu","note":"gerekirse tek satır kısa Türkçe not, yoksa boş"}\n\nMetin:\n`+t;
+
+/* ---------- UI helpers ---------- */
+let last=null;
+function status(t,err,spin){const s=$("status");s.hidden=!t;s.className="status"+(err?" err":"");s.innerHTML="";if(spin){const sp=document.createElement("span");sp.className="spinner";s.append(sp," ");}s.append(t||"");}
+function show(r){
+  last=r;$("out").hidden=false;
+  $("outTag").textContent=r.tag||"";
+  $("outOrig").textContent=r.orig||"";$("outOrig").className="orig"+(r.origAr?" arx":"");
+  $("outMain").textContent=r.main||"";$("outMain").className=r.mainAr?"ar-out":"tr-out";
+  $("outLatin").textContent=r.latin||"";$("outLatin").hidden=!r.latin;
+  $("outNote").textContent=r.note||"";$("outNote").hidden=!r.note;
+}
+function hist(){try{return JSON.parse(localStorage.getItem("lt_hist")||"[]");}catch(e){return [];}}
+function addHist(it){const h=hist();h.unshift(it);try{localStorage.setItem("lt_hist",JSON.stringify(h.slice(0,30)));}catch(e){}renderHist();}
+function renderHist(){
+  const h=hist();$("histWrap").hidden=!h.length;const box=$("hist");box.textContent="";
+  h.forEach(it=>{const b=document.createElement("button");b.className="item";
+    const a=document.createElement("span");a.className="a";a.textContent=it.ar||"";
+    const t=document.createElement("span");t.className="t";t.textContent=it.tr||"";
+    b.append(a,t);b.onclick=()=>{show({tag:"Geçmiş",orig:it.tr,main:it.ar,mainAr:true,latin:it.latin});window.scrollTo({top:0,behavior:"smooth"});};box.append(b);});
+}
+$("hclear").onclick=()=>{try{localStorage.removeItem("lt_hist");}catch(e){}renderHist();};
+
+/* ---------- Speech synthesis ---------- */
+let voices=[];function lv(){try{voices=speechSynthesis.getVoices();}catch(e){}}
+try{lv();speechSynthesis.onvoiceschanged=lv;}catch(e){}
+function speak(text,lang){
+  if(!text||!("speechSynthesis" in window))return;
+  try{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);
+    const pref=lang==="ar"?["ar-LY","ar-TN","ar-EG","ar-SA","ar"]:["tr-TR","tr"];
+    let v=null;for(const p of pref){v=voices.find(x=>x.lang&&x.lang.replace("_","-").toLowerCase().startsWith(p.toLowerCase()));if(v)break;}
+    if(v)u.voice=v;u.lang=v?v.lang:(lang==="ar"?"ar-SA":"tr-TR");u.rate=cfg.rate;speechSynthesis.speak(u);}catch(e){}
+}
+
+/* ---------- Speech recognition ---------- */
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+let rec=null;
+function listen(lang,onInterim,onFinal,onEnd){
+  if(!SR){onEnd&&onEnd("nosr");return;}
+  try{if(rec)rec.abort();}catch(e){}
+  rec=new SR();rec.lang=lang;rec.interimResults=true;rec.continuous=false;rec.maxAlternatives=1;
+  let finalText="";
+  rec.onresult=ev=>{let interim="";for(let i=ev.resultIndex;i<ev.results.length;i++){const r=ev.results[i];if(r.isFinal)finalText+=r[0].transcript;else interim+=r[0].transcript;}onInterim&&onInterim(finalText+interim);};
+  rec.onerror=ev=>{rec._err=ev.error;};
+  rec.onend=()=>{const t=finalText.trim();const err=rec&&rec._err;rec=null;if(t)onFinal(t);onEnd&&onEnd(t?null:(err||"empty"));};
+  try{rec.start();}catch(e){onEnd&&onEnd("start");}
+}
+function stopListen(){try{rec&&rec.stop();}catch(e){}}
+function micErr(code){
+  if(code==="nosr")return "Bu tarayıcı ses tanımayı desteklemiyor. Chrome ile açın veya klavyedeki 🎤 tuşunu kullanın.";
+  if(code==="not-allowed"||code==="service-not-allowed")return "Mikrofon izni verilmedi. Tarayıcı ayarlarından bu siteye mikrofon izni verin.";
+  if(code==="no-speech"||code==="empty")return "Ses algılanmadı. Düğmeye basıp tekrar konuşun.";
+  if(code==="network")return "Ses tanıma için internet gerekli.";
+  return "Ses tanıma başlatılamadı ("+code+").";
+}
+
+/* ---------- Conversation ---------- */
+let talking=null, busy=false;
+function bubble(side,main,mainAr,orig,origAr,latin){
+  const d=document.createElement("div");d.className="bub "+(side==="tr"?"me":"them");
+  const a=document.createElement("p");a.className=mainAr?"ar-out":"tr-out";a.textContent=main;
+  const l=document.createElement("p");l.className="latin";l.textContent=latin||"";l.hidden=!latin;
+  const o=document.createElement("p");o.className="orig"+(origAr?" arx":"");o.textContent=orig;
+  const acts=document.createElement("div");acts.className="acts";
+  const s=document.createElement("button");s.className="mini";s.textContent="🔊";s.onclick=()=>speak(main,mainAr?"ar":"tr");
+  const g=document.createElement("button");g.className="mini";g.textContent="⛶ Büyük";g.onclick=()=>bigShow(main,mainAr,latin);
+  acts.append(s,g);d.append(a,l,o,acts);$("bubbles").prepend(d);
+}
+async function convTranslate(side,text){
+  busy=true;$("convStatus").className="status";$("convStatus").innerHTML='<span class="spinner"></span> Çevriliyor…';
+  try{
+    if(side==="tr"){const r=await gemini(P_TR(text));
+      bubble("tr",r.arabic,true,text,false,r.latin);addHist({tr:text,ar:r.arabic,latin:r.latin});
+      if(cfg.auto)speak(r.arabic,"ar");
+    }else{const r=await gemini(P_LY(text));
+      bubble("ly",r.turkish,false,r.arabic||text,true,"");addHist({tr:r.turkish,ar:r.arabic||text,latin:r.latin});
+      if(cfg.auto)speak(r.turkish,"tr");
+    }
+    $("convStatus").textContent="Sıradaki kişi düğmesine basıp konuşabilir.";
+  }catch(e){$("convStatus").className="status err";$("convStatus").textContent=errText(e);}
+  busy=false;$("live").textContent="";
+}
+function talk(side){
+  if(busy)return;
+  const btn=side==="tr"?$("talkTr"):$("talkLy");
+  if(talking===side){stopListen();return;}
+  if(talking)stopListen();
+  try{speechSynthesis.cancel();}catch(e){}
+  talking=side;btn.classList.add("rec");
+  $("convStatus").className="status";$("convStatus").textContent=side==="tr"?"Dinliyorum… Bitince tekrar basın veya susun.":"أسمعك… Libyalı konuşabilir.";
+  listen(side==="tr"?"tr-TR":cfg.arLang,
+    t=>{$("live").textContent=t;$("live").className="live"+(side==="ly"?" ar":"");},
+    t=>convTranslate(side,t),
+    err=>{btn.classList.remove("rec");talking=null;if(err){$("convStatus").className="status err";$("convStatus").textContent=micErr(err);$("live").textContent="";}});
+}
+$("talkTr").onclick=()=>talk("tr");$("talkLy").onclick=()=>talk("ly");
+
+/* ---------- Text ---------- */
+let dir="tr";
+function setDir(d){dir=d;$("dirLabel").textContent=d==="tr"?"Türkçe → Libya Arapçası":"Libya Arapçası → Türkçe";
+  $("src").className=d==="tr"?"":"ar";$("src").placeholder=d==="tr"?"Türkçe yazın…":"اكتب هنا… (Latin harfle de olur)";}
+$("swap").onclick=()=>setDir(dir==="tr"?"ly":"tr");
+$("clear").onclick=()=>{$("src").value="";$("src").focus();};
+$("mic").onclick=()=>{
+  const b=$("mic");if(b.classList.contains("rec")){stopListen();return;}
+  b.classList.add("rec");
+  listen(dir==="tr"?"tr-TR":cfg.arLang,t=>{$("src").value=t;},()=>{},err=>{b.classList.remove("rec");if(err)status(micErr(err),true);});
+};
+$("go").onclick=async()=>{
+  const text=$("src").value.trim();if(!text){$("src").focus();return;}
+  $("go").disabled=true;status("Çevriliyor…",false,true);
+  try{
+    if(dir==="tr"){const r=await gemini(P_TR(text));
+      show({tag:"Libya Arapçası",orig:text,main:r.arabic,mainAr:true,latin:r.latin,note:r.note});addHist({tr:text,ar:r.arabic,latin:r.latin});}
+    else{const r=await gemini(P_LY(text));
+      show({tag:"Türkçe",orig:(r.arabic||text)+(r.latin?"\n"+r.latin:""),origAr:true,main:r.turkish,mainAr:false,note:r.note});addHist({tr:r.turkish,ar:r.arabic||text,latin:r.latin});}
+    status("");
+  }catch(e){status(errText(e),true);}
+  $("go").disabled=false;
+};
+
+/* ---------- Photo ---------- */
+let img=null;
+$("camBtn").onclick=()=>$("camFile").click();$("galBtn").onclick=()=>$("galFile").click();
+function pick(f){if(!f)return;
+  const url=URL.createObjectURL(f);const im=new Image();
+  im.onload=()=>{const max=1600;let w=im.naturalWidth,h=im.naturalHeight;const s=Math.min(1,max/Math.max(w,h));w=Math.round(w*s);h=Math.round(h*s);
+    const c=document.createElement("canvas");c.width=w;c.height=h;c.getContext("2d").drawImage(im,0,0,w,h);
+    img=c.toDataURL("image/jpeg",0.85).split(",")[1];$("preview").src=url;$("preview").hidden=false;$("photoGo").disabled=false;};
+  im.onerror=()=>status("Bu resim açılamadı, başka bir resim deneyin.",true);
+  im.src=url;}
+$("camFile").onchange=e=>pick(e.target.files[0]);$("galFile").onchange=e=>pick(e.target.files[0]);
+$("photoGo").onclick=async()=>{
+  if(!img)return;$("photoGo").disabled=true;status("Resim okunuyor…",false,true);
+  try{
+    const r=await gemini(RULES+`\n\nResimdeki tüm yazıları oku. Yazı Arapçaysa Türkçeye çevir; Türkçeyse Libya Arapçasına çevir; başka bir dildeyse Türkçeye çevir. Yazı yoksa resimde ne olduğunu kısaca Türkçe anlat. JSON: {"source_lang":"ar|tr|other|none","original":"resimdeki yazı aynen, satır düzeniyle","translation":"çeviri","translation_is_arabic":true veya false,"latin":"çeviri Arapçaysa Türkçe harfli okunuşu, değilse boş","note":"kısa Türkçe not, yoksa boş"}`,img,"image/jpeg");
+    show({tag:"Resimden",orig:r.original,origAr:r.source_lang==="ar",main:r.translation,mainAr:!!r.translation_is_arabic,latin:r.latin,note:r.note});
+    status("");
+  }catch(e){status(errText(e),true);}
+  $("photoGo").disabled=false;
+};
+
+/* ---------- Result actions ---------- */
+$("speak").onclick=()=>last&&speak(last.main,last.mainAr?"ar":"tr");
+$("copy").onclick=()=>{if(!last)return;const t=last.main+(last.latin?"\n"+last.latin:"");
+  (navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>{$("copy").textContent="Kopyalandı ✓";setTimeout(()=>$("copy").textContent="Kopyala",1500);}).catch(()=>{});};
+function bigShow(main,ar,latin){$("bigMain").textContent=main;$("bigMain").className=ar?"ar-out":"tr-out";$("bigLatin").textContent=latin||"";$("bigView").hidden=false;}
+$("big").onclick=()=>last&&bigShow(last.main,last.mainAr,last.latin);
+$("bigClose").onclick=()=>$("bigView").hidden=true;
+
+/* ---------- Tabs ---------- */
+document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{
+  document.querySelectorAll(".tab").forEach(x=>x.setAttribute("aria-selected",x===t));
+  ["conv","text","photo"].forEach(v=>$("v-"+v).hidden=v!==t.dataset.v);});
+
+/* ---------- Settings ---------- */
+function fillSettings(){$("sKey").value=cfg.key;$("sFast").value=cfg.fast;$("sGood").value=cfg.good;$("sArLang").value=cfg.arLang;$("sAuto").checked=cfg.auto;$("sRate").value=cfg.rate;setMode(cfg.mode);}
+function setMode(m){cfg.mode=m;$("mFast").setAttribute("aria-pressed",m==="fast");$("mGood").setAttribute("aria-pressed",m==="good");}
+$("mFast").onclick=()=>setMode("fast");$("mGood").onclick=()=>setMode("good");
+$("openSettings").onclick=()=>{fillSettings();$("settings").hidden=false;};
+$("sClose").onclick=()=>$("settings").hidden=true;
+$("settings").onclick=e=>{if(e.target.id==="settings")$("settings").hidden=true;};
+$("sSave").onclick=()=>{cfg.key=$("sKey").value.trim();cfg.fast=$("sFast").value.trim()||DEF.fast;cfg.good=$("sGood").value.trim()||DEF.good;
+  cfg.arLang=$("sArLang").value;cfg.auto=$("sAuto").checked;cfg.rate=parseFloat($("sRate").value)||0.9;saveCfg();
+  $("settings").hidden=true;$("setup").hidden=!!cfg.key;status("Ayarlar kaydedildi.");setTimeout(()=>status(""),1500);};
+$("setupSave").onclick=()=>{const k=$("setupKey").value.trim();if(!k)return;cfg.key=k;saveCfg();$("setup").hidden=true;status("Hazır! Konuşma düğmesine basıp deneyin.");};
+
+$("setup").hidden=!!cfg.key;
+renderHist();
+if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}));}
+})();
+</script>
+</body>
+</html>
