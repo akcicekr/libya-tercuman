@@ -281,15 +281,20 @@ const RULES=`Sen Türkler ile Libyalılar arasında çalışan uzman bir tercüm
 - Sadece istenen JSON'u döndür.`;
 
 /* ---------- Gemini ---------- */
-const FALLBACK=["gemini-3.8-flash","gemini-3.6-flash","gemini-3.5-flash-lite","gemini-3.1-flash-lite"];
+const FALLBACK=["gemini-3.8-flash","gemini-3.5-flash-lite","gemini-3.1-flash-lite"];
+// Bu modelin günlük hakkı SADECE canlı kamera için saklanır
+const RESERVE="gemini-3.6-flash";
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 function quotaPaused(){try{return Date.now()<Number(localStorage.getItem("lt_quota_until")||0);}catch(e){return false;}}
 function pauseQuota(){try{localStorage.setItem("lt_quota_until",String(Date.now()+20*60*1000));}catch(e){}}
-async function gemini(prompt, imageB64, mime){
+async function gemini(prompt, imageB64, mime, opts){
+  const reserve=!!(opts&&opts.reserve);
   if(!cfg.key&&!PROXY){$("setup").hidden=false;throw {code:"nokey"};}
-  if(quotaPaused())throw {code:"quota"};
-  const first=(cfg.mode==="good"?cfg.good:cfg.fast).trim();
-  const models=[first,...FALLBACK.filter(m=>m!==first)];
+  const paused=quotaPaused();
+  if(paused&&!reserve)throw {code:"quota"};
+  let first=(cfg.mode==="good"?cfg.good:cfg.fast).trim();if(first===RESERVE)first=FALLBACK[0];
+  let models=[first,...FALLBACK.filter(m=>m!==first)];
+  if(reserve)models=paused?[RESERVE]:[...models,RESERVE];
   let lastErr=null,allQuota=true;
   for(let i=0;i<models.length;i++){
     for(let attempt=0;attempt<2;attempt++){
@@ -302,7 +307,8 @@ async function gemini(prompt, imageB64, mime){
       }
     }
   }
-  if(allQuota)pauseQuota();
+  if(allQuota&&!reserve)pauseQuota();
+  if(allQuota&&reserve)throw {code:"camquota"};
   throw lastErr||{code:"busy"};
 }
 /* Google Çeviri yedeği: yapay zekâ kotası bitince devreye girer (standart Arapça) */
@@ -366,7 +372,8 @@ function errText(e){
     case "badkey":return "Anahtar geçersiz. Ayarlardan doğru anahtarı yapıştırın.";
     case "forbidden":return "Google erişimi reddetti. Anahtarın etkin olduğundan emin olun.";
     case "model":return "Model adı bulunamadı. Ayarlar’dan model adını güncelleyin.";
-    case "quota":return "Günlük yapay zekâ kotası doldu. Resim/kamera çevirisi sabah ~09:00'da yeniden açılır; yazı ve konuşma çevirisi Google Çeviri ile devam eder.";
+    case "quota":return "Günlük yapay zekâ kotası doldu. Fotoğraf çevirisi sabah ~09:00'da yeniden açılır. Canlı kamera için ayrılan haklarla kamera, Google Çeviri ile yazı ve konuşma çalışmaya devam eder.";
+    case "camquota":return "Kameraya ayrılan günlük haklar da bitti. Kamera çevirisi sabah ~09:00'da yeniden açılır.";
     case "busy":return "Google sunucuları şu an çok yoğun. Birkaç saniye sonra tekrar deneyin.";
     case "net":return "İnternet bağlantısı yok veya zayıf.";
     case "empty":return "Cevap düzgün gelmedi, tekrar deneyin.";
@@ -573,7 +580,7 @@ async function camShot(){
   const b64=u.toDataURL("image/jpeg",0.82).split(",")[1];
   $("camShot").disabled=true;camMsg("Okunuyor ve çevriliyor…");
   try{
-    const r=await gemini(P_CAM(),b64,"image/jpeg");const blocks=(r&&r.blocks)||[];
+    const r=await gemini(P_CAM(),b64,"image/jpeg",{reserve:true});const blocks=(r&&r.blocks)||[];
     camDraw(blocks);
     if(blocks.length){
       const ar=blocks.filter(b=>b.translation_is_arabic).length>blocks.length/2;
