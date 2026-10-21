@@ -283,23 +283,49 @@ const RULES=`Sen Türkler ile Libyalılar arasında çalışan uzman bir tercüm
 /* ---------- Gemini ---------- */
 const FALLBACK=["gemini-3.8-flash","gemini-3.6-flash","gemini-3.5-flash-lite","gemini-3.1-flash-lite"];
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+function quotaPaused(){try{return Date.now()<Number(localStorage.getItem("lt_quota_until")||0);}catch(e){return false;}}
+function pauseQuota(){try{localStorage.setItem("lt_quota_until",String(Date.now()+20*60*1000));}catch(e){}}
 async function gemini(prompt, imageB64, mime){
   if(!cfg.key&&!PROXY){$("setup").hidden=false;throw {code:"nokey"};}
+  if(quotaPaused())throw {code:"quota"};
   const first=(cfg.mode==="good"?cfg.good:cfg.fast).trim();
   const models=[first,...FALLBACK.filter(m=>m!==first)];
-  let lastErr=null;
+  let lastErr=null,allQuota=true;
   for(let i=0;i<models.length;i++){
     for(let attempt=0;attempt<2;attempt++){
       try{return await geminiOnce(models[i],prompt,imageB64,mime);}
       catch(e){
-        lastErr=e;
+        lastErr=e;if(e.code!=="quota")allQuota=false;
         if(e.code==="busy"){if(attempt===0){await sleep(1200);continue;}break;}
-        if(e.code==="model")break;
+        if(e.code==="model"||e.code==="quota")break;
         throw e;
       }
     }
   }
+  if(allQuota)pauseQuota();
   throw lastErr||{code:"busy"};
+}
+/* Google Çeviri yedeği: yapay zekâ kotası bitince devreye girer (standart Arapça) */
+async function gtrans(q,sl,tl){
+  const u="https://translate.googleapis.com/translate_a/single?client=gtx&sl="+sl+"&tl="+tl+"&dt=t&dt=rm&q="+encodeURIComponent(q);
+  const r=await fetch(u);if(!r.ok)throw {code:"gt"};
+  const j=await r.json();const segs=(j&&j[0])||[];
+  const text=segs.filter(s=>s&&typeof s[0]==="string").map(s=>s[0]).join("");
+  const rm=segs.find(s=>s&&s[0]==null)||[];
+  if(!text)throw {code:"gt"};
+  return {text,tgtLatin:rm[2]||"",srcLatin:rm[3]||""};
+}
+const GT_NOTE="Günlük yapay zekâ kotası doldu; bu çeviri Google Çeviri'den (standart Arapça). Kota her sabah ~09:00'da yenilenir.";
+const canFallback=e=>!(e&&(e.code==="net"||e.code==="nokey"));
+async function toLibyan(text){
+  try{return await gemini(P_TR(text));}
+  catch(e){if(!canFallback(e))throw e;
+    try{const g=await gtrans(text,"tr","ar");return {arabic:g.text,latin:g.tgtLatin,note:GT_NOTE,fb:true};}catch(_){throw e;}}
+}
+async function toTurkish(text){
+  try{return await gemini(P_LY(text));}
+  catch(e){if(!canFallback(e))throw e;
+    try{const g=await gtrans(text,"auto","tr");return {turkish:g.text,arabic:text,latin:g.srcLatin,note:GT_NOTE,fb:true};}catch(_){throw e;}}
 }
 async function geminiOnce(model, prompt, imageB64, mime){
   const parts=[{text:prompt}];
@@ -340,7 +366,7 @@ function errText(e){
     case "badkey":return "Anahtar geçersiz. Ayarlardan doğru anahtarı yapıştırın.";
     case "forbidden":return "Google erişimi reddetti. Anahtarın etkin olduğundan emin olun.";
     case "model":return "Model adı bulunamadı. Ayarlar’dan model adını güncelleyin.";
-    case "quota":return "Ücretsiz kota doldu veya çok sık istek gitti. Biraz bekleyip tekrar deneyin.";
+    case "quota":return "Günlük yapay zekâ kotası doldu. Resim/kamera çevirisi sabah ~09:00'da yeniden açılır; yazı ve konuşma çevirisi Google Çeviri ile devam eder.";
     case "busy":return "Google sunucuları şu an çok yoğun. Birkaç saniye sonra tekrar deneyin.";
     case "net":return "İnternet bağlantısı yok veya zayıf.";
     case "empty":return "Cevap düzgün gelmedi, tekrar deneyin.";
@@ -420,14 +446,15 @@ function bubble(side,main,mainAr,orig,origAr,latin){
 async function convTranslate(side,text){
   busy=true;$("convStatus").className="status";$("convStatus").innerHTML='<span class="spinner"></span> Çevriliyor…';
   try{
-    if(side==="tr"){const r=await gemini(P_TR(text));
+    let fb=false;
+    if(side==="tr"){const r=await toLibyan(text);fb=!!r.fb;
       bubble("tr",r.arabic,true,text,false,r.latin);addHist({tr:text,ar:r.arabic,latin:r.latin});
       if(cfg.auto)speak(r.arabic,"ar");
-    }else{const r=await gemini(P_LY(text));
+    }else{const r=await toTurkish(text);fb=!!r.fb;
       bubble("ly",r.turkish,false,r.arabic||text,true,"");addHist({tr:r.turkish,ar:r.arabic||text,latin:r.latin});
       if(cfg.auto)speak(r.turkish,"tr");
     }
-    $("convStatus").textContent="Sıradaki kişi düğmesine basıp konuşabilir.";
+    $("convStatus").textContent=fb?"Günlük kota doldu, Google Çeviri ile devam ediliyor (standart Arapça).":"Sıradaki kişi düğmesine basıp konuşabilir.";
   }catch(e){$("convStatus").className="status err";$("convStatus").textContent=errText(e);}
   busy=false;$("live").textContent="";
 }
@@ -461,10 +488,10 @@ $("go").onclick=async()=>{
   const text=$("src").value.trim();if(!text){$("src").focus();return;}
   $("go").disabled=true;status("Çevriliyor…",false,true);
   try{
-    if(dir==="tr"){const r=await gemini(P_TR(text));
-      show({tag:"Libya Arapçası",orig:text,main:r.arabic,mainAr:true,latin:r.latin,note:r.note});addHist({tr:text,ar:r.arabic,latin:r.latin});}
-    else{const r=await gemini(P_LY(text));
-      show({tag:"Türkçe",orig:(r.arabic||text)+(r.latin?"\n"+r.latin:""),origAr:true,main:r.turkish,mainAr:false,note:r.note});addHist({tr:r.turkish,ar:r.arabic||text,latin:r.latin});}
+    if(dir==="tr"){const r=await toLibyan(text);
+      show({tag:r.fb?"Arapça (Google Çeviri)":"Libya Arapçası",orig:text,main:r.arabic,mainAr:true,latin:r.latin,note:r.note});addHist({tr:text,ar:r.arabic,latin:r.latin});}
+    else{const r=await toTurkish(text);
+      show({tag:r.fb?"Türkçe (Google Çeviri)":"Türkçe",orig:(r.arabic||text)+(r.latin?"\n"+r.latin:""),origAr:true,main:r.turkish,mainAr:false,note:r.note});addHist({tr:r.turkish,ar:r.arabic||text,latin:r.latin});}
     status("");
   }catch(e){status(errText(e),true);}
   $("go").disabled=false;
