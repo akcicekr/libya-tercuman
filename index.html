@@ -101,6 +101,22 @@ a{color:var(--accent)}
 .link{font:inherit;font-size:.84rem;background:none;border:0;color:var(--muted);text-decoration:underline;cursor:pointer}
 .setup{border-color:var(--sand)}
 .setup ol{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px}
+.cam{position:fixed;inset:0;z-index:25;background:#000;color:#fff;display:flex;flex-direction:column;
+  padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)}
+.cam-top{display:flex;align-items:center;gap:10px;padding:10px 12px}
+.cam-msg{font-size:.92rem;opacity:.95;flex:1;min-width:0}
+.cam .mini{background:rgba(255,255,255,.16);color:#fff;border-color:transparent;padding:8px 12px;font-size:.9rem}
+.cam-stage{position:relative;flex:1;min-height:0;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.cam-frame{position:relative}
+.cam-frame video,.cam-frame canvas{display:block;width:100%;height:100%}
+.cam-layer{position:absolute;inset:0;pointer-events:none}
+.tbox{position:absolute;pointer-events:auto;background:rgba(255,253,248,.93);color:#1f2a2b;border-radius:4px;padding:1px 3px;overflow:hidden;
+  display:flex;align-items:center;justify-content:center;text-align:center;line-height:1.15;font-weight:600;box-shadow:0 1px 5px rgba(0,0,0,.45);cursor:pointer}
+.tbox.ar{font-family:var(--f-ar);direction:rtl}
+.cam-bottom{display:flex;gap:10px;padding:14px 12px 18px;justify-content:center}
+.cam-bottom .btn{min-width:150px;font-size:1.05rem}
+.cam-hint{font-size:.8rem;opacity:.75;text-align:center;margin:0 0 6px}
+.overlay{z-index:40}
 @media (prefers-reduced-motion:reduce){.rec,.spinner{animation:none}}
 </style>
 </head>
@@ -157,6 +173,8 @@ a{color:var(--accent)}
 
   <!-- PHOTO -->
   <section class="card" id="v-photo" hidden>
+    <button class="btn primary" id="liveBtn">🎥 Canlı kamera ile çevir</button>
+    <p class="hint">Fotoğraf çekmeden: kamerayı yazıya tutun, ekrana dokunun. Çeviri, yazının üstünde görünür.</p>
     <div class="photo">
       <img id="preview" alt="Seçilen resim" hidden>
       <div class="row" style="justify-content:center">
@@ -195,6 +213,27 @@ a{color:var(--accent)}
   <p class="ar-out" id="bigMain"></p>
   <p class="latin" id="bigLatin"></p>
   <button class="btn ghost" id="bigClose">Kapat</button>
+</div>
+
+<div class="cam" id="cam" hidden>
+  <div class="cam-top">
+    <button class="mini" id="camClose">✕ Kapat</button>
+    <span class="cam-msg" id="camMsg">Kamera açılıyor…</span>
+  </div>
+  <div class="cam-stage" id="camStage">
+    <div class="cam-frame" id="camFrame">
+      <video id="camVideo" playsinline muted autoplay></video>
+      <canvas id="camCanvas" hidden></canvas>
+      <div class="cam-layer" id="camLayer"></div>
+    </div>
+  </div>
+  <div>
+    <p class="cam-hint" id="camHint">Çeviri kutusuna dokunursanız büyük gösterir</p>
+    <div class="cam-bottom">
+      <button class="btn primary" id="camShot">🔍 Çevir</button>
+      <button class="btn ghost" id="camLive" hidden>↺ Canlıya dön</button>
+    </div>
+  </div>
 </div>
 
 <div class="sheet" id="settings" hidden>
@@ -451,6 +490,76 @@ $("photoGo").onclick=async()=>{
   }catch(e){status(errText(e),true);}
   $("photoGo").disabled=false;
 };
+
+/* ---------- Live camera ---------- */
+let stream=null,fw=0,fh=0,camBusy=false;
+const P_CAM=()=>RULES+`\n\nBu bir kamera görüntüsü. Görüntüdeki her yazı bloğunu (tabela, satır, paragraf, etiket, düğme yazısı) bul ve çevir. Yazı Arapçaysa Türkçeye; Türkçeyse Libya Arapçasına; başka bir dildeyse Türkçeye çevir. Her bloğun görüntüdeki yerini box_2d olarak ver: [ymin, xmin, ymax, xmax], 0-1000 arası normalize. Aynı cümleye ait satırları tek blokta birleştir, en fazla 15 blok. JSON: {"blocks":[{"box_2d":[ymin,xmin,ymax,xmax],"original":"…","translation":"…","translation_is_arabic":true veya false}]}. Yazı yoksa {"blocks":[]}.`;
+function camMsg(t){$("camMsg").textContent=t;}
+function camFit(){
+  const st=$("camStage").getBoundingClientRect();const w=fw||9,h=fh||16;
+  const s=Math.min(st.width/w,st.height/h);$("camFrame").style.width=(w*s)+"px";$("camFrame").style.height=(h*s)+"px";
+}
+function camLiveMode(){
+  $("camVideo").hidden=false;$("camCanvas").hidden=true;$("camLayer").textContent="";
+  $("camShot").hidden=false;$("camLive").hidden=true;$("camHint").hidden=true;
+  camMsg("Kamerayı yazıya tutun, 🔍 Çevir'e veya ekrana dokunun");
+}
+async function camOpen(){
+  $("cam").hidden=false;camMsg("Kamera açılıyor…");$("camHint").hidden=true;
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){camMsg("Bu cihazda canlı kamera desteklenmiyor. 📷 Fotoğraf çek'i kullanın.");return;}
+  try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"},width:{ideal:1920},height:{ideal:1080}},audio:false});}
+  catch(e){camMsg(e&&e.name==="NotAllowedError"?"Kamera izni verilmedi. Tarayıcı ayarlarından bu siteye kamera izni verin.":"Kamera açılamadı. 📷 Fotoğraf çek'i kullanın.");return;}
+  const v=$("camVideo");v.srcObject=stream;
+  await new Promise(r=>{if(v.readyState>=1)r();else v.onloadedmetadata=()=>r();});
+  try{await v.play();}catch(e){}
+  fw=v.videoWidth;fh=v.videoHeight;camFit();camLiveMode();
+}
+function camClose(){
+  if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}
+  $("camVideo").srcObject=null;$("cam").hidden=true;
+}
+function fitText(el){
+  let fs=Math.max(9,el.clientHeight*0.75);el.style.fontSize=fs+"px";
+  for(let i=0;i<30&&fs>8&&(el.scrollHeight>el.clientHeight+1||el.scrollWidth>el.clientWidth+1);i++){fs*=0.9;el.style.fontSize=fs+"px";}
+}
+function camDraw(blocks){
+  const L=$("camLayer");L.textContent="";
+  blocks.forEach(b=>{
+    const bx=b.box_2d||b.box;if(!Array.isArray(bx)||bx.length<4||!b.translation)return;
+    let [y0,x0,y1,x1]=bx.map(n=>Math.max(0,Math.min(1000,Number(n)||0)));
+    if(y1<y0)[y0,y1]=[y1,y0];if(x1<x0)[x0,x1]=[x1,x0];
+    if(y1-y0<25){const c=(y0+y1)/2;y0=Math.max(0,c-12.5);y1=Math.min(1000,c+12.5);}
+    if(x1-x0<60){const c=(x0+x1)/2;x0=Math.max(0,c-30);x1=Math.min(1000,c+30);}
+    const d=document.createElement("div");d.className="tbox"+(b.translation_is_arabic?" ar":"");
+    d.style.left=(x0/10)+"%";d.style.top=(y0/10)+"%";d.style.width=((x1-x0)/10)+"%";d.style.height=((y1-y0)/10)+"%";
+    d.textContent=b.translation;d.onclick=ev=>{ev.stopPropagation();bigShow(b.translation,!!b.translation_is_arabic,"");};
+    L.append(d);fitText(d);
+  });
+}
+async function camShot(){
+  if(camBusy||!stream)return;const v=$("camVideo");if(!v.videoWidth)return;
+  camBusy=true;fw=v.videoWidth;fh=v.videoHeight;
+  const c=$("camCanvas");c.width=fw;c.height=fh;c.getContext("2d").drawImage(v,0,0,fw,fh);
+  v.hidden=true;c.hidden=false;camFit();
+  const s=Math.min(1,1280/Math.max(fw,fh));const u=document.createElement("canvas");
+  u.width=Math.round(fw*s);u.height=Math.round(fh*s);u.getContext("2d").drawImage(c,0,0,u.width,u.height);
+  const b64=u.toDataURL("image/jpeg",0.82).split(",")[1];
+  $("camShot").disabled=true;camMsg("Okunuyor ve çevriliyor…");
+  try{
+    const r=await gemini(P_CAM(),b64,"image/jpeg");const blocks=(r&&r.blocks)||[];
+    camDraw(blocks);
+    if(blocks.length){
+      const ar=blocks.filter(b=>b.translation_is_arabic).length>blocks.length/2;
+      show({tag:"Canlı kamera",orig:blocks.map(b=>b.original||"").join("\n"),origAr:!ar,main:blocks.map(b=>b.translation).join("\n"),mainAr:ar});
+      camMsg("Çeviri hazır ("+blocks.length+" yazı)");$("camHint").hidden=false;
+    }else camMsg("Görüntüde yazı bulunamadı. Yaklaşıp tekrar deneyin.");
+  }catch(e){camMsg(errText(e));}
+  $("camShot").disabled=false;$("camShot").hidden=true;$("camLive").hidden=false;camBusy=false;
+}
+$("liveBtn").onclick=camOpen;$("camClose").onclick=camClose;$("camShot").onclick=camShot;$("camLive").onclick=camLiveMode;
+$("camStage").onclick=()=>{if(!stream||camBusy)return;if(!$("camVideo").hidden)camShot();else camLiveMode();};
+window.addEventListener("resize",()=>{if(!$("cam").hidden)camFit();});
+document.addEventListener("visibilitychange",()=>{if(document.hidden&&stream)camClose();});
 
 /* ---------- Result actions ---------- */
 $("speak").onclick=()=>last&&speak(last.main,last.mainAr?"ar":"tr");
