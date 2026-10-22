@@ -117,6 +117,7 @@ a{color:var(--accent)}
 .cam-bottom .btn{min-width:150px;font-size:1.05rem}
 .cam-hint{font-size:.8rem;opacity:.75;text-align:center;margin:0 0 6px}
 .overlay{z-index:40}
+.gtbtn{width:100%}
 @media (prefers-reduced-motion:reduce){.rec,.spinner{animation:none}}
 </style>
 </head>
@@ -154,6 +155,7 @@ a{color:var(--accent)}
     </div>
     <p class="live" id="live"></p>
     <p class="status" id="convStatus">Kendi düğmenize basın ve konuşun. Bitince otomatik çevirip sesli okur.</p>
+    <button class="btn ghost gtbtn" id="gtConv" hidden>📱 Google Çeviri uygulamasında aç</button>
     <div class="bubbles" id="bubbles"></div>
   </section>
 
@@ -199,9 +201,11 @@ a{color:var(--accent)}
       <button class="btn ghost" id="speak">🔊 Oku</button>
       <button class="btn ghost" id="copy">Kopyala</button>
       <button class="btn ghost" id="big">⛶ Büyük</button>
+      <button class="btn ghost" id="gtOut">📱 Google Çeviri</button>
     </div>
   </section>
   <p class="status" id="status" hidden></p>
+  <button class="btn ghost gtbtn" id="gtText" hidden>📱 Google Çeviri uygulamasında aç</button>
 
   <section class="hist" id="histWrap" hidden>
     <div class="hhead"><span class="tag">Son çeviriler</span><button class="link" id="hclear">Temizle</button></div>
@@ -286,7 +290,17 @@ const RULES=`Sen Türkler ile Libyalılar arasında çalışan uzman bir tercüm
 // Hızlıdan yavaşa: yazı/konuşma sadece hafif (hızlı) modelleri kullanır
 const FALLBACK=["gemini-3.5-flash-lite","gemini-3.1-flash-lite"];
 const CAM_EXTRA="gemini-3.8-flash";
-const REQ_TIMEOUT=7000, AI_WAIT=4500;
+const REQ_TIMEOUT=7000, AI_WAIT=3000;
+/* Google Çeviri uygulamasına aktarma (uygulamadaki çevrimdışı dil paketleriyle çalışır) */
+let lastReq=null;
+function openGT(){
+  if(!lastReq)return;
+  const q="sl="+lastReq.sl+"&tl="+lastReq.tl+"&text="+encodeURIComponent(lastReq.text)+"&op=translate";
+  const web="https://translate.google.com/?"+q;
+  if(/Android/i.test(navigator.userAgent)){
+    location.href="intent://translate.google.com/?"+q+"#Intent;scheme=https;package=com.google.android.apps.translate;S.browser_fallback_url="+encodeURIComponent(web)+";end";
+  }else window.open(web,"_blank","noopener");
+}
 // Bu modelin günlük hakkı SADECE canlı kamera için saklanır
 const RESERVE="gemini-3.6-flash";
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -343,9 +357,11 @@ async function fixAr(r,text){
   return r;
 }
 function toLibyan(text){
+  lastReq={text,sl:"tr",tl:"ar"};
   return hedge(()=>gemini(P_TR(text)).then(r=>fixAr(r,text)),async note=>{const g=await gtrans(text,"tr","ar");return {arabic:g.text,latin:g.tgtLatin,note,fb:true};});
 }
 function toTurkish(text){
+  lastReq={text,sl:"ar",tl:"tr"};
   return hedge(()=>gemini(P_LY(text)),async note=>{const g=await gtrans(text,"auto","tr");return {turkish:g.text,arabic:text,latin:g.srcLatin,note,fb:true};});
 }
 async function geminiOnce(model, prompt, imageB64, mime){
@@ -393,7 +409,7 @@ function errText(e){
     case "quota":return "Günlük yapay zekâ kotası doldu. Fotoğraf çevirisi sabah ~09:00'da yeniden açılır. Canlı kamera için ayrılan haklarla kamera, Google Çeviri ile yazı ve konuşma çalışmaya devam eder.";
     case "camquota":return "Kameraya ayrılan günlük haklar da bitti. Kamera çevirisi sabah ~09:00'da yeniden açılır.";
     case "busy":return "Google sunucuları şu an çok yoğun. Birkaç saniye sonra tekrar deneyin.";
-    case "net":return "İnternet bağlantısı yok veya zayıf.";
+    case "net":return "İnternet bağlantısı yok veya zayıf. Aşağıdaki düğmeyle Google Çeviri uygulamasında (indirilmiş dil paketiyle) çevirebilirsiniz.";
     case "empty":return "Cevap düzgün gelmedi, tekrar deneyin.";
     default:return "Hata: "+((e&&e.msg)||"bilinmeyen sorun");
   }
@@ -480,7 +496,8 @@ async function convTranslate(side,text){
       if(cfg.auto)speak(r.turkish,"tr");
     }
     $("convStatus").textContent=fb?"Günlük kota doldu, Google Çeviri ile devam ediliyor (standart Arapça).":"Sıradaki kişi düğmesine basıp konuşabilir.";
-  }catch(e){$("convStatus").className="status err";$("convStatus").textContent=errText(e);}
+    $("gtConv").hidden=true;
+  }catch(e){$("convStatus").className="status err";$("convStatus").textContent=errText(e);$("gtConv").hidden=!lastReq;}
   busy=false;$("live").textContent="";
 }
 function talk(side){
@@ -517,8 +534,8 @@ $("go").onclick=async()=>{
       show({tag:r.fb?"Arapça (Google Çeviri)":"Libya Arapçası",orig:text,main:r.arabic,mainAr:true,latin:r.latin,note:r.note});addHist({tr:text,ar:r.arabic,latin:r.latin});}
     else{const r=await toTurkish(text);
       show({tag:r.fb?"Türkçe (Google Çeviri)":"Türkçe",orig:(r.arabic||text)+(r.latin?"\n"+r.latin:""),origAr:true,main:r.turkish,mainAr:false,note:r.note});addHist({tr:r.turkish,ar:r.arabic||text,latin:r.latin});}
-    status("");
-  }catch(e){status(errText(e),true);}
+    status("");$("gtText").hidden=true;
+  }catch(e){status(errText(e),true);$("gtText").hidden=!lastReq;}
   $("go").disabled=false;
 };
 
@@ -620,6 +637,7 @@ $("copy").onclick=()=>{if(!last)return;const t=last.main+(last.latin?"\n"+last.l
 function bigShow(main,ar,latin){$("bigMain").textContent=main;$("bigMain").className=ar?"ar-out":"tr-out";$("bigLatin").textContent=latin||"";$("bigView").hidden=false;}
 $("big").onclick=()=>last&&bigShow(last.main,last.mainAr,last.latin);
 $("bigClose").onclick=()=>$("bigView").hidden=true;
+["gtConv","gtText","gtOut"].forEach(id=>$(id).onclick=openGT);
 
 /* ---------- Tabs ---------- */
 document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{
