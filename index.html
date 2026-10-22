@@ -334,8 +334,16 @@ async function hedge(aiCall,gtCall){
   catch(e){if(!canFallback(e))throw e;try{return await gtCall(e.code==="quota"?GT_NOTE:SLOW_NOTE);}catch(_){throw e;}}
   try{return await gtCall(SLOW_NOTE);}catch(_){return await ai;}
 }
+const hasAr=s=>/[؀-ۿ]/.test(s||"");
+// Model alanları karıştırırsa (Arapça yerine Latin harf) düzelt; yine yoksa Google'dan Arapçasını al
+async function fixAr(r,text){
+  if(!r||r.fb||hasAr(r.arabic))return r;
+  if(hasAr(r.latin)){const a=r.latin;r.latin=r.arabic;r.arabic=a;return r;}
+  try{const g=await gtrans(text,"tr","ar");if(!r.latin)r.latin=r.arabic;r.arabic=g.text;}catch(e){}
+  return r;
+}
 function toLibyan(text){
-  return hedge(()=>gemini(P_TR(text)),async note=>{const g=await gtrans(text,"tr","ar");return {arabic:g.text,latin:g.tgtLatin,note,fb:true};});
+  return hedge(()=>gemini(P_TR(text)).then(r=>fixAr(r,text)),async note=>{const g=await gtrans(text,"tr","ar");return {arabic:g.text,latin:g.tgtLatin,note,fb:true};});
 }
 function toTurkish(text){
   return hedge(()=>gemini(P_LY(text)),async note=>{const g=await gtrans(text,"auto","tr");return {turkish:g.text,arabic:text,latin:g.srcLatin,note,fb:true};});
