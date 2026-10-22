@@ -243,7 +243,7 @@ a{color:var(--accent)}
       <input type="password" id="sKey" autocomplete="off">
       <span class="hint">Anahtar almak için: <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a></span></div>
     <div class="field"><label>Çeviri modu</label>
-      <div class="seg"><button id="mFast" aria-pressed="true">Hızlı</button><button id="mGood" aria-pressed="false">En doğru</button></div></div>
+      <div class="seg"><button id="mFast" aria-pressed="true">Hızlı</button><button id="mGood" aria-pressed="false">En doğru (yavaş)</button></div></div>
     <div class="field"><label for="sFast">Hızlı model</label><input type="text" id="sFast"></div>
     <div class="field"><label for="sGood">Doğru model</label><input type="text" id="sGood">
       <span class="hint">Google model adları değişirse buradan güncelleyin.</span></div>
@@ -272,6 +272,8 @@ const DEF={key:"",fast:"gemini-3.5-flash-lite",good:"gemini-3.8-flash",mode:"fas
 let cfg=Object.assign({},DEF);
 try{Object.assign(cfg,JSON.parse(localStorage.getItem("lt_cfg")||"{}"));}catch(e){}
 function saveCfg(){try{localStorage.setItem("lt_cfg",JSON.stringify(cfg));}catch(e){}}
+// v2: hız için herkes en hızlı moda alınır (eski "En doğru" ayarı sıfırlanır)
+if(cfg.v!==2){cfg.mode="fast";cfg.fast=DEF.fast;cfg.v=2;saveCfg();}
 
 const RULES=`Sen Türkler ile Libyalılar arasında çalışan uzman bir tercümansın.
 - Libya Arapçası (Trablus ağzı, günlük konuşma dili) kullan. Fusha yerine Libyalıların gerçekten konuştuğu kelimeleri seç (örn. شن/شنو, قداش, باهي, توا, نبي, هلبا, كيفاش, وين).
@@ -281,7 +283,10 @@ const RULES=`Sen Türkler ile Libyalılar arasında çalışan uzman bir tercüm
 - Sadece istenen JSON'u döndür.`;
 
 /* ---------- Gemini ---------- */
-const FALLBACK=["gemini-3.8-flash","gemini-3.5-flash-lite","gemini-3.1-flash-lite"];
+// Hızlıdan yavaşa: yazı/konuşma sadece hafif (hızlı) modelleri kullanır
+const FALLBACK=["gemini-3.5-flash-lite","gemini-3.1-flash-lite"];
+const CAM_EXTRA="gemini-3.8-flash";
+const REQ_TIMEOUT=7000, AI_WAIT=4500;
 // Bu modelin günlük hakkı SADECE canlı kamera için saklanır
 const RESERVE="gemini-3.6-flash";
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -294,17 +299,14 @@ async function gemini(prompt, imageB64, mime, opts){
   if(paused&&!reserve)throw {code:"quota"};
   let first=(cfg.mode==="good"?cfg.good:cfg.fast).trim();if(first===RESERVE)first=FALLBACK[0];
   let models=[first,...FALLBACK.filter(m=>m!==first)];
-  if(reserve)models=paused?[RESERVE]:[...models,RESERVE];
+  if(reserve)models=paused?[RESERVE]:[...models.filter(m=>m!==CAM_EXTRA),CAM_EXTRA,RESERVE];
   let lastErr=null,allQuota=true;
   for(let i=0;i<models.length;i++){
-    for(let attempt=0;attempt<2;attempt++){
-      try{return await geminiOnce(models[i],prompt,imageB64,mime);}
-      catch(e){
-        lastErr=e;if(e.code!=="quota")allQuota=false;
-        if(e.code==="busy"){if(attempt===0){await sleep(1200);continue;}break;}
-        if(e.code==="model"||e.code==="quota")break;
-        throw e;
-      }
+    try{return await geminiOnce(models[i],prompt,imageB64,mime);}
+    catch(e){
+      lastErr=e;if(e.code!=="quota")allQuota=false;
+      if(e.code==="busy"||e.code==="model"||e.code==="quota")continue; // beklemeden sıradaki modele geç
+      throw e;
     }
   }
   if(allQuota&&!reserve)pauseQuota();
@@ -323,15 +325,20 @@ async function gtrans(q,sl,tl){
 }
 const GT_NOTE="Günlük yapay zekâ kotası doldu; bu çeviri Google Çeviri'den (standart Arapça). Kota her sabah ~09:00'da yenilenir.";
 const canFallback=e=>!(e&&(e.code==="net"||e.code==="nokey"));
-async function toLibyan(text){
-  try{return await gemini(P_TR(text));}
-  catch(e){if(!canFallback(e))throw e;
-    try{const g=await gtrans(text,"tr","ar");return {arabic:g.text,latin:g.tgtLatin,note:GT_NOTE,fb:true};}catch(_){throw e;}}
+const SLOW_NOTE="Yapay zekâ geç cevap verdi; beklememeniz için Google Çeviri kullanıldı (standart Arapça).";
+// Yapay zekâ AI_WAIT içinde cevap vermezse Google Çeviri sonucu kullanılır
+async function hedge(aiCall,gtCall){
+  const ai=aiCall();ai.catch(()=>{});
+  const slow=new Promise(r=>setTimeout(()=>r("__slow"),AI_WAIT));
+  try{const first=await Promise.race([ai,slow]);if(first!=="__slow")return first;}
+  catch(e){if(!canFallback(e))throw e;try{return await gtCall(e.code==="quota"?GT_NOTE:SLOW_NOTE);}catch(_){throw e;}}
+  try{return await gtCall(SLOW_NOTE);}catch(_){return await ai;}
 }
-async function toTurkish(text){
-  try{return await gemini(P_LY(text));}
-  catch(e){if(!canFallback(e))throw e;
-    try{const g=await gtrans(text,"auto","tr");return {turkish:g.text,arabic:text,latin:g.srcLatin,note:GT_NOTE,fb:true};}catch(_){throw e;}}
+function toLibyan(text){
+  return hedge(()=>gemini(P_TR(text)),async note=>{const g=await gtrans(text,"tr","ar");return {arabic:g.text,latin:g.tgtLatin,note,fb:true};});
+}
+function toTurkish(text){
+  return hedge(()=>gemini(P_LY(text)),async note=>{const g=await gtrans(text,"auto","tr");return {turkish:g.text,arabic:text,latin:g.srcLatin,note,fb:true};});
 }
 async function geminiOnce(model, prompt, imageB64, mime){
   const parts=[{text:prompt}];
@@ -343,10 +350,13 @@ async function geminiOnce(model, prompt, imageB64, mime){
       :`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
     const headers={"Content-Type":"application/json"};
     if(!viaProxy)headers["x-goog-api-key"]=cfg.key;
-    res=await fetch(url,{
-      method:"POST",headers,
-      body:JSON.stringify({contents:[{role:"user",parts}],generationConfig:{temperature:0.3,responseMimeType:"application/json"}})});
-  }catch(e){throw {code:"net"};}
+    const ac=new AbortController();const to=setTimeout(()=>ac.abort(),imageB64?REQ_TIMEOUT*2:REQ_TIMEOUT);
+    try{
+      res=await fetch(url,{
+        method:"POST",headers,signal:ac.signal,
+        body:JSON.stringify({contents:[{role:"user",parts}],generationConfig:{temperature:0.3,responseMimeType:"application/json"}})});
+    }finally{clearTimeout(to);}
+  }catch(e){if(e&&e.name==="AbortError")throw {code:"busy"};if(!navigator.onLine)throw {code:"net"};throw {code:"busy"};}
   let data={};try{data=await res.json();}catch(e){}
   if(!res.ok){
     const msg=(data.error&&data.error.message)||"";
