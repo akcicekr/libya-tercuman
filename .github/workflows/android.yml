@@ -31,9 +31,10 @@ jobs:
           path: tercuman-kulaklik.apk
       - name: Commit APK
         run: |
+          rm -rf build-android
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git pull --rebase
           git add tercuman-kulaklik.apk
           git commit -m "APK derlendi (#${{ github.run_number }})" || exit 0
+          git pull --rebase -X theirs || true
           git push
