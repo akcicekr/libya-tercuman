@@ -287,9 +287,10 @@ a{color:var(--accent)}
     <label class="check"><input type="checkbox" id="sAuto"> Konuşmada çeviriyi otomatik sesli oku</label>
     <div class="field" id="nativeBox" hidden><label>🎧 Kulaklık ayrımı</label>
       <label class="check"><input type="checkbox" id="sSplit"> Kulaklık takılıyken: Türkçe kulaklıktan, Arapça/İngilizce telefon hoparlöründen</label>
-      <select id="sRoute"><option value="media">Yöntem 1 – Normal (önerilen)</option><option value="call">Yöntem 2 – Arama modu (1 olmazsa)</option></select>
+      <select id="sRoute"><option value="media">Yöntem 1 – Normal</option><option value="call">Yöntem 2 – Arama modu</option><option value="alarm">Yöntem 3 – Alarm kanalı (hoparlör + kulaklık)</option></select>
+      <select id="sSpk"><option value="spk">Karşı tarafın sesi: alttaki hoparlör</option><option value="rcv">Karşı tarafın sesi: ahize (kulağa tutulan üst hoparlör)</option></select>
       <div class="row"><button class="btn ghost" id="tEar" type="button">🎧 Kulaklık testi</button><button class="btn ghost" id="tSpk" type="button">📢 Hoparlör testi</button></div>
-      <span class="hint" id="hsInfo"></span></div>
+      <span class="hint" id="hsInfo"></span><span class="hint" id="auInfo" style="white-space:pre-wrap"></span></div>
     <div class="field"><label for="sRate">Okuma hızı</label><input type="range" id="sRate" min="0.6" max="1.2" step="0.1"></div>
     <button class="btn primary" id="sSave">Kaydet</button>
     <button class="btn ghost" id="sClose">Kapat</button>
@@ -519,7 +520,7 @@ const NATIVE=window.LTNative||null;
 function speak(text,lang,force){
   if(!text)return;
   if(NATIVE){try{const tag=lang==="ar"?"ar-SA":lang==="en"?"en-US":"tr-TR";
-    const route=force||(cfg.split?(lang==="tr"?"ear":"spk"):"auto");
+    const route=force||(cfg.split?(lang==="tr"?"ear":(cfg.spkDev||"spk")):"auto");
     NATIVE.speak(text,tag,route,cfg.route||"media",Number(cfg.rate)||0.9);}catch(e){}return;}
   if(!("speechSynthesis" in window))return;
   try{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);
@@ -790,7 +791,8 @@ function renderPh(){
 
 /* ---------- Settings ---------- */
 function fillSettings(){$("sKey").value=cfg.key;$("sFast").value=cfg.fast;$("sGood").value=cfg.good;$("sArLang").value=cfg.arLang;$("sAuto").checked=cfg.auto;$("sRate").value=cfg.rate;setMode(cfg.mode);
-  if(NATIVE){$("nativeBox").hidden=false;$("sSplit").checked=cfg.split!==false;$("sRoute").value=cfg.route||"media";
+  if(NATIVE){$("nativeBox").hidden=false;$("sSplit").checked=cfg.split!==false;$("sRoute").value=cfg.route||"media";$("sSpk").value=cfg.spkDev||"spk";
+    try{$("auInfo").textContent=NATIVE.devices?NATIVE.devices():"";}catch(e){}
     let hs=false;try{hs=NATIVE.hasHeadset();}catch(e){}$("hsInfo").textContent=hs?"Kulaklık bağlı ✓":"Şu an kulaklık bağlı değil (takınca ayrım otomatik başlar).";}}
 function setMode(m){cfg.mode=m;$("mFast").setAttribute("aria-pressed",m==="fast");$("mGood").setAttribute("aria-pressed",m==="good");}
 $("mFast").onclick=()=>setMode("fast");$("mGood").onclick=()=>setMode("good");
@@ -799,13 +801,14 @@ $("sClose").onclick=()=>$("settings").hidden=true;
 $("settings").onclick=e=>{if(e.target.id==="settings")$("settings").hidden=true;};
 $("sSave").onclick=()=>{cfg.key=$("sKey").value.trim();cfg.fast=$("sFast").value.trim()||DEF.fast;cfg.good=$("sGood").value.trim()||DEF.good;
   cfg.arLang=$("sArLang").value;cfg.auto=$("sAuto").checked;cfg.rate=parseFloat($("sRate").value)||0.9;
-  if(NATIVE){cfg.split=$("sSplit").checked;cfg.route=$("sRoute").value;}saveCfg();
+  if(NATIVE){cfg.split=$("sSplit").checked;cfg.route=$("sRoute").value;cfg.spkDev=$("sSpk").value;}saveCfg();
   $("settings").hidden=true;$("setup").hidden=!!(cfg.key||PROXY);status("Ayarlar kaydedildi.");setTimeout(()=>status(""),1500);};
 $("setupSave").onclick=()=>{const k=$("setupKey").value.trim();if(!k)return;cfg.key=k;saveCfg();$("setup").hidden=true;status("Hazır! Konuşma düğmesine basıp deneyin.");};
 
 if(NATIVE){
   $("tEar").onclick=()=>{cfg.route=$("sRoute").value;speak("Bu ses kulaklıktan gelmeli.","tr","ear");};
-  $("tSpk").onclick=()=>{cfg.route=$("sRoute").value;speak("هذا الصوت لازم يطلع من سماعة التليفون","ar","spk");};
+  $("tSpk").onclick=()=>{cfg.route=$("sRoute").value;speak("هذا الصوت لازم يطلع من سماعة التليفون","ar",$("sSpk").value);};
+  window.__ltAudio=info=>{const el=$("auInfo");if(el)el.textContent="Son test: "+info+"\n"+(NATIVE.devices?NATIVE.devices():"");};
 }
 // Android geri tuşu: açık pencereyi kapat
 window.__ltBack=()=>{for(const id of ["bigView","settings"])if(!$(id).hidden){$(id).hidden=true;return true;}if(!$("cam").hidden){camClose();return true;}return false;};
