@@ -117,6 +117,16 @@ a{color:var(--accent)}
 .cam-bottom .btn{min-width:150px;font-size:1.05rem}
 .cam-hint{font-size:.8rem;opacity:.75;text-align:center;margin:0 0 6px}
 .overlay{z-index:40}
+.tabs{grid-template-columns:repeat(4,1fr)}
+.tab{font-size:.82rem;padding:10px 2px}
+.chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px}
+.chip{font:inherit;font-size:.8rem;white-space:nowrap;border:1px solid var(--line);background:var(--bg);color:var(--muted);border-radius:999px;padding:6px 11px;cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.phlist{display:flex;flex-direction:column;gap:6px}
+.ph{font:inherit;text-align:left;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:9px 11px;color:var(--fg);cursor:pointer;display:grid;gap:2px}
+.ph .t{font-weight:600}
+.ph .a{font-family:var(--f-ar);direction:rtl;text-align:right;font-size:1.2rem}
+.ph .l{font-size:.85rem;color:var(--accent);font-style:italic}
 .gtbtn{width:100%}
 @media (prefers-reduced-motion:reduce){.rec,.spinner{animation:none}}
 </style>
@@ -145,6 +155,7 @@ a{color:var(--accent)}
     <button class="tab" role="tab" aria-selected="true" data-v="conv">🎙️ Konuşma</button>
     <button class="tab" role="tab" aria-selected="false" data-v="text">✍️ Yazı</button>
     <button class="tab" role="tab" aria-selected="false" data-v="photo">📷 Resim</button>
+    <button class="tab" role="tab" aria-selected="false" data-v="phr">📖 Cümleler</button>
   </nav>
 
   <!-- CONVERSATION -->
@@ -174,6 +185,13 @@ a{color:var(--accent)}
   </section>
 
   <!-- PHOTO -->
+  <section class="card" id="v-phr" hidden>
+    <input type="text" id="phSearch" placeholder="Ara… (ör. pompa, elektrik, ne kadar)" autocomplete="off">
+    <div class="chips" id="phCats"></div>
+    <p class="hint" id="phInfo">İnternetsiz çalışır, kota harcamaz. Dokununca büyük gösterir ve sesli okur.</p>
+    <div class="phlist" id="phList"></div>
+  </section>
+
   <section class="card" id="v-photo" hidden>
     <button class="btn primary" id="liveBtn">🎥 Canlı kamera ile çevir</button>
     <p class="hint">Fotoğraf çekmeden: kamerayı yazıya tutun, ekrana dokunun. Çeviri, yazının üstünde görünür.</p>
@@ -266,6 +284,7 @@ a{color:var(--accent)}
   </div>
 </div>
 
+<script src="phrases.js"></script>
 <script>
 (function(){
 "use strict";
@@ -288,7 +307,10 @@ const RULES=`Sen Türkler ile Libyalılar arasında çalışan uzman bir tercüm
 
 /* ---------- Gemini ---------- */
 // Hızlıdan yavaşa: yazı/konuşma sadece hafif (hızlı) modelleri kullanır
-const FALLBACK=["gemini-3.5-flash-lite","gemini-3.1-flash-lite"];
+// Gemma: günde 14.400 ücretsiz hak ama yavaş (30–80 sn); sadece hızlı modeller bitince/yoğunken arkada çalışır
+const FALLBACK=["gemini-3.5-flash-lite","gemini-3.1-flash-lite","gemini-3-flash-preview","gemma-4-31b-it","gemma-4-26b-a4b-it"];
+const isGemma=m=>/^gemma-/.test(m);
+const GEMMA_TIMEOUT=90000;
 const CAM_EXTRA="gemini-3.8-flash";
 const REQ_TIMEOUT=7000, AI_WAIT=3000;
 /* Google Çeviri uygulamasına aktarma (uygulamadaki çevrimdışı dil paketleriyle çalışır) */
@@ -313,6 +335,7 @@ async function gemini(prompt, imageB64, mime, opts){
   if(paused&&!reserve)throw {code:"quota"};
   let first=(cfg.mode==="good"?cfg.good:cfg.fast).trim();if(first===RESERVE)first=FALLBACK[0];
   let models=[first,...FALLBACK.filter(m=>m!==first)];
+  if(imageB64)models=models.filter(m=>!isGemma(m)); // resim için yavaş Gemma kullanılmaz
   if(reserve)models=paused?[RESERVE]:[...models.filter(m=>m!==CAM_EXTRA),CAM_EXTRA,RESERVE];
   let lastErr=null,allQuota=true;
   for(let i=0;i<models.length;i++){
@@ -340,14 +363,28 @@ async function gtrans(q,sl,tl){
 const GT_NOTE="Günlük yapay zekâ kotası doldu; bu çeviri Google Çeviri'den (standart Arapça). Kota her sabah ~09:00'da yenilenir.";
 const canFallback=e=>!(e&&(e.code==="net"||e.code==="nokey"));
 const SLOW_NOTE="Yapay zekâ geç cevap verdi; beklememeniz için Google Çeviri kullanıldı (standart Arapça).";
-// Yapay zekâ AI_WAIT içinde cevap vermezse Google Çeviri sonucu kullanılır
-async function hedge(aiCall,gtCall){
+const LATE_NOTE="Önce Google Çeviri gösterildi; Libya ağzıyla çeviri gelince kendiliğinden güncellenir…";
+// Yapay zekâ AI_WAIT içinde cevap vermezse Google Çeviri sonucu gösterilir;
+// yapay zekâ (ör. yavaş Gemma) sonradan cevap verirse onLate ile ekrandaki çeviri güncellenir
+async function hedge(aiCall,gtCall,onLate){
   const ai=aiCall();ai.catch(()=>{});
   const slow=new Promise(r=>setTimeout(()=>r("__slow"),AI_WAIT));
   try{const first=await Promise.race([ai,slow]);if(first!=="__slow")return first;}
   catch(e){if(!canFallback(e))throw e;try{return await gtCall(e.code==="quota"?GT_NOTE:SLOW_NOTE);}catch(_){throw e;}}
-  try{return await gtCall(SLOW_NOTE);}catch(_){return await ai;}
+  let g;
+  try{g=await gtCall(onLate?LATE_NOTE:SLOW_NOTE);}catch(_){return await ai;}
+  if(onLate)ai.then(r=>{if(r&&!r.fb)onLate(r);}).catch(()=>{});
+  return g;
 }
+/* ---------- Çeviri hafızası + hazır cümleler (kota harcamaz) ---------- */
+const normTr=s=>(s||"").toLocaleLowerCase("tr").replace(/[.,!?;:"'()…–-]/g," ").replace(/\s+/g," ").trim();
+const normAr=s=>(s||"").replace(/[ً-ٰٟ]/g,"").replace(/[؟،.,!?;:"'()…–-]/g," ").replace(/\s+/g," ").trim();
+const PHRASES=(window.LT_PHRASES||[]).map(p=>({cat:p[0],tr:p[1],ar:p[2],latin:p[3]}));
+const phTr=new Map(),phAr=new Map();PHRASES.forEach(p=>{phTr.set(normTr(p.tr),p);phAr.set(normAr(p.ar),p);});
+let memo={};try{memo=JSON.parse(localStorage.getItem("lt_memo")||"{}");}catch(e){}
+function memoGet(k){return memo[k]||null;}
+function memoPut(k,v){try{memo[k]=Object.assign({},v,{note:"",fb:false,t:Date.now()});const ks=Object.keys(memo);if(ks.length>600){ks.sort((a,b)=>memo[a].t-memo[b].t).slice(0,ks.length-600).forEach(x=>delete memo[x]);}localStorage.setItem("lt_memo",JSON.stringify(memo));}catch(e){}}
+const MEMO_NOTE="Hafızadan (kota harcanmadı)";
 const hasAr=s=>/[؀-ۿ]/.test(s||"");
 // Model alanları karıştırırsa (Arapça yerine Latin harf) düzelt; yine yoksa Google'dan Arapçasını al
 async function fixAr(r,text){
@@ -356,13 +393,25 @@ async function fixAr(r,text){
   try{const g=await gtrans(text,"tr","ar");if(!r.latin)r.latin=r.arabic;r.arabic=g.text;}catch(e){}
   return r;
 }
-function toLibyan(text){
+async function toLibyan(text,onLate){
   lastReq={text,sl:"tr",tl:"ar"};
-  return hedge(()=>gemini(P_TR(text)).then(r=>fixAr(r,text)),async note=>{const g=await gtrans(text,"tr","ar");return {arabic:g.text,latin:g.tgtLatin,note,fb:true};});
+  const k="tr|"+normTr(text);
+  const ph=phTr.get(normTr(text));if(ph)return {arabic:ph.ar,latin:ph.latin,note:"Hazır cümle sözlüğünden (kota harcanmadı)"};
+  const m=memoGet(k);if(m)return Object.assign({},m,{note:MEMO_NOTE});
+  const r=await hedge(()=>gemini(P_TR(text)).then(r=>fixAr(r,text)),async note=>{const g=await gtrans(text,"tr","ar");return {arabic:g.text,latin:g.tgtLatin,note,fb:true};},
+    onLate&&(x=>{memoPut(k,x);onLate(x);}));
+  if(r&&!r.fb)memoPut(k,r);
+  return r;
 }
-function toTurkish(text){
+async function toTurkish(text,onLate){
   lastReq={text,sl:"ar",tl:"tr"};
-  return hedge(()=>gemini(P_LY(text)),async note=>{const g=await gtrans(text,"auto","tr");return {turkish:g.text,arabic:text,latin:g.srcLatin,note,fb:true};});
+  const k="ly|"+normAr(text).toLowerCase();
+  const ph=phAr.get(normAr(text));if(ph)return {turkish:ph.tr,arabic:ph.ar,latin:ph.latin,note:"Hazır cümle sözlüğünden (kota harcanmadı)"};
+  const m=memoGet(k);if(m)return Object.assign({},m,{note:MEMO_NOTE});
+  const r=await hedge(()=>gemini(P_LY(text)),async note=>{const g=await gtrans(text,"auto","tr");return {turkish:g.text,arabic:text,latin:g.srcLatin,note,fb:true};},
+    onLate&&(x=>{memoPut(k,x);onLate(x);}));
+  if(r&&!r.fb)memoPut(k,r);
+  return r;
 }
 async function geminiOnce(model, prompt, imageB64, mime){
   const parts=[{text:prompt}];
@@ -374,11 +423,12 @@ async function geminiOnce(model, prompt, imageB64, mime){
       :`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
     const headers={"Content-Type":"application/json"};
     if(!viaProxy)headers["x-goog-api-key"]=cfg.key;
-    const ac=new AbortController();const to=setTimeout(()=>ac.abort(),imageB64?REQ_TIMEOUT*2:REQ_TIMEOUT);
+    const ac=new AbortController();const to=setTimeout(()=>ac.abort(),isGemma(model)?GEMMA_TIMEOUT:(imageB64?REQ_TIMEOUT*2:REQ_TIMEOUT));
+    const gc=isGemma(model)?{temperature:0.3}:{temperature:0.3,responseMimeType:"application/json"};
     try{
       res=await fetch(url,{
         method:"POST",headers,signal:ac.signal,
-        body:JSON.stringify({contents:[{role:"user",parts}],generationConfig:{temperature:0.3,responseMimeType:"application/json"}})});
+        body:JSON.stringify({contents:[{role:"user",parts}],generationConfig:gc})});
     }finally{clearTimeout(to);}
   }catch(e){if(e&&e.name==="AbortError")throw {code:"busy"};if(!navigator.onLine)throw {code:"net"};throw {code:"busy"};}
   let data={};try{data=await res.json();}catch(e){}
@@ -391,7 +441,7 @@ async function geminiOnce(model, prompt, imageB64, mime){
     if(res.status===429)throw {code:/quota|exhaust/i.test(msg)?"quota":"busy"};
     throw {code:"api",msg:res.status+" "+msg};
   }
-  const txt=(((data.candidates||[])[0]||{}).content||{}).parts?.map(p=>p.text||"").join("")||"";
+  const txt=(((data.candidates||[])[0]||{}).content||{}).parts?.filter(p=>!p.thought).map(p=>p.text||"").join("")||"";
   if(!txt)throw {code:"empty"};
   return parseJSON(txt);
 }
@@ -480,19 +530,25 @@ function bubble(side,main,mainAr,orig,origAr,latin){
   const l=document.createElement("p");l.className="latin";l.textContent=latin||"";l.hidden=!latin;
   const o=document.createElement("p");o.className="orig"+(origAr?" arx":"");o.textContent=orig;
   const acts=document.createElement("div");acts.className="acts";
-  const s=document.createElement("button");s.className="mini";s.textContent="🔊";s.onclick=()=>speak(main,mainAr?"ar":"tr");
-  const g=document.createElement("button");g.className="mini";g.textContent="⛶ Büyük";g.onclick=()=>bigShow(main,mainAr,latin);
-  acts.append(s,g);d.append(a,l,o,acts);$("bubbles").prepend(d);
+  const s=document.createElement("button");s.className="mini";s.textContent="🔊";s.onclick=()=>speak(a.textContent,mainAr?"ar":"tr");
+  const g=document.createElement("button");g.className="mini";g.textContent="⛶ Büyük";g.onclick=()=>bigShow(a.textContent,mainAr,l.textContent);
+  const n=document.createElement("p");n.className="hint";n.hidden=true;
+  acts.append(s,g);d.append(a,l,o,n,acts);$("bubbles").prepend(d);
+  return {update(main2,latin2,note){a.textContent=main2;l.textContent=latin2||"";l.hidden=!latin2;n.textContent=note||"";n.hidden=!note;}};
 }
+const UPG_NOTE="✓ Libya ağzıyla güncellendi";
 async function convTranslate(side,text){
   busy=true;$("convStatus").className="status";$("convStatus").innerHTML='<span class="spinner"></span> Çevriliyor…';
   try{
     let fb=false;
-    if(side==="tr"){const r=await toLibyan(text);fb=!!r.fb;
-      bubble("tr",r.arabic,true,text,false,r.latin);addHist({tr:text,ar:r.arabic,latin:r.latin});
+    let b=null;
+    if(side==="tr"){const r=await toLibyan(text,x=>{if(b)b.update(x.arabic,x.latin,UPG_NOTE);addHist({tr:text,ar:x.arabic,latin:x.latin});});fb=!!r.fb;
+      b=bubble("tr",r.arabic,true,text,false,r.latin);if(r.note&&!r.fb)b.update(r.arabic,r.latin,r.note);
+      if(!r.fb)addHist({tr:text,ar:r.arabic,latin:r.latin});
       if(cfg.auto)speak(r.arabic,"ar");
-    }else{const r=await toTurkish(text);fb=!!r.fb;
-      bubble("ly",r.turkish,false,r.arabic||text,true,"");addHist({tr:r.turkish,ar:r.arabic||text,latin:r.latin});
+    }else{const r=await toTurkish(text,x=>{if(b)b.update(x.turkish,"",UPG_NOTE);addHist({tr:x.turkish,ar:x.arabic||text,latin:x.latin});});fb=!!r.fb;
+      b=bubble("ly",r.turkish,false,r.arabic||text,true,"");if(r.note&&!r.fb)b.update(r.turkish,"",r.note);
+      if(!r.fb)addHist({tr:r.turkish,ar:r.arabic||text,latin:r.latin});
       if(cfg.auto)speak(r.turkish,"tr");
     }
     $("convStatus").textContent=fb?"Günlük kota doldu, Google Çeviri ile devam ediliyor (standart Arapça).":"Sıradaki kişi düğmesine basıp konuşabilir.";
@@ -530,10 +586,14 @@ $("go").onclick=async()=>{
   const text=$("src").value.trim();if(!text){$("src").focus();return;}
   $("go").disabled=true;status("Çevriliyor…",false,true);
   try{
-    if(dir==="tr"){const r=await toLibyan(text);
-      show({tag:r.fb?"Arapça (Google Çeviri)":"Libya Arapçası",orig:text,main:r.arabic,mainAr:true,latin:r.latin,note:r.note});addHist({tr:text,ar:r.arabic,latin:r.latin});}
-    else{const r=await toTurkish(text);
-      show({tag:r.fb?"Türkçe (Google Çeviri)":"Türkçe",orig:(r.arabic||text)+(r.latin?"\n"+r.latin:""),origAr:true,main:r.turkish,mainAr:false,note:r.note});addHist({tr:r.turkish,ar:r.arabic||text,latin:r.latin});}
+    if(dir==="tr"){
+      const late=x=>{if(last&&last.orig===text)show({tag:"Libya Arapçası",orig:text,main:x.arabic,mainAr:true,latin:x.latin,note:UPG_NOTE});addHist({tr:text,ar:x.arabic,latin:x.latin});};
+      const r=await toLibyan(text,late);
+      show({tag:r.fb?"Arapça (Google Çeviri)":"Libya Arapçası",orig:text,main:r.arabic,mainAr:true,latin:r.latin,note:r.note});if(!r.fb)addHist({tr:text,ar:r.arabic,latin:r.latin});}
+    else{
+      const late=x=>{if(last&&last.src===text)show({tag:"Türkçe",src:text,orig:(x.arabic||text)+(x.latin?"\n"+x.latin:""),origAr:true,main:x.turkish,mainAr:false,note:UPG_NOTE});addHist({tr:x.turkish,ar:x.arabic||text,latin:x.latin});};
+      const r=await toTurkish(text,late);
+      show({tag:r.fb?"Türkçe (Google Çeviri)":"Türkçe",src:text,orig:(r.arabic||text)+(r.latin?"\n"+r.latin:""),origAr:true,main:r.turkish,mainAr:false,note:r.note});if(!r.fb)addHist({tr:r.turkish,ar:r.arabic||text,latin:r.latin});}
     status("");$("gtText").hidden=true;
   }catch(e){status(errText(e),true);$("gtText").hidden=!lastReq;}
   $("go").disabled=false;
@@ -642,7 +702,29 @@ $("bigClose").onclick=()=>$("bigView").hidden=true;
 /* ---------- Tabs ---------- */
 document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{
   document.querySelectorAll(".tab").forEach(x=>x.setAttribute("aria-selected",x===t));
-  ["conv","text","photo"].forEach(v=>$("v-"+v).hidden=v!==t.dataset.v);});
+  ["conv","text","photo","phr"].forEach(v=>$("v-"+v).hidden=v!==t.dataset.v);});
+
+/* ---------- Hazır cümleler ---------- */
+let phCat="Tümü";
+function renderPh(){
+  const q=normTr($("phSearch").value);const box=$("phList");box.textContent="";
+  const list=PHRASES.filter(p=>(phCat==="Tümü"||p.cat===phCat)&&(!q||normTr(p.tr+" "+p.latin).includes(q)||p.ar.includes($("phSearch").value.trim())));
+  list.slice(0,150).forEach(p=>{
+    const b=document.createElement("button");b.className="ph";
+    const t=document.createElement("span");t.className="t";t.textContent=p.tr;
+    const a=document.createElement("span");a.className="a";a.textContent=p.ar;
+    const l=document.createElement("span");l.className="l";l.textContent=p.latin;
+    b.append(t,a,l);b.onclick=()=>{bigShow(p.ar,true,p.latin);speak(p.ar,"ar");};box.append(b);
+  });
+  if(!list.length){const e=document.createElement("p");e.className="hint";e.textContent="Bulunamadı. Yazı sekmesinden çevirebilirsiniz.";box.append(e);}
+}
+(function(){
+  if(!PHRASES.length){$("phInfo").textContent="Cümle listesi yüklenemedi. İnternete bağlanıp uygulamayı yeniden açın.";return;}
+  const cats=["Tümü",...new Set(PHRASES.map(p=>p.cat))];
+  cats.forEach(c=>{const b=document.createElement("button");b.className="chip";b.textContent=c;b.setAttribute("aria-pressed",c===phCat);
+    b.onclick=()=>{phCat=c;[...$("phCats").children].forEach(x=>x.setAttribute("aria-pressed",x===b));renderPh();};$("phCats").append(b);});
+  $("phSearch").oninput=renderPh;renderPh();
+})();
 
 /* ---------- Settings ---------- */
 function fillSettings(){$("sKey").value=cfg.key;$("sFast").value=cfg.fast;$("sGood").value=cfg.good;$("sArLang").value=cfg.arLang;$("sAuto").checked=cfg.auto;$("sRate").value=cfg.rate;setMode(cfg.mode);}
