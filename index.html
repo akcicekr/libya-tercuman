@@ -97,6 +97,9 @@ a{color:var(--accent)}
 .item{font:inherit;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;color:var(--fg);cursor:pointer;display:flex;flex-direction:column;gap:2px}
 .item .a{font-family:var(--f-ar);direction:rtl;text-align:right;font-size:1.05rem}
 .item .t{font-size:.9rem;color:var(--muted)}
+.item .a.en{font-family:inherit;direction:ltr;text-align:left}
+.langsw{display:flex;width:100%;margin:2px 0 0}.langsw button{flex:1;padding:9px 8px;font-size:.92rem}
+.talk.en .lbl{font-family:inherit}
 .hhead{display:flex;justify-content:space-between;align-items:center}
 .link{font:inherit;font-size:.84rem;background:none;border:0;color:var(--muted);text-decoration:underline;cursor:pointer}
 .setup{border-color:var(--sand)}
@@ -157,6 +160,10 @@ a{color:var(--accent)}
     <button class="tab" role="tab" aria-selected="false" data-v="photo">📷 Resim</button>
     <button class="tab" role="tab" aria-selected="false" data-v="phr">📖 Cümleler</button>
   </nav>
+  <div class="seg langsw" role="group" aria-label="Karşı dil">
+    <button id="lgLy" aria-pressed="true">🇱🇾 Libya Arapçası</button>
+    <button id="lgEn" aria-pressed="false">🇬🇧 İngilizce</button>
+  </div>
 
   <!-- CONVERSATION -->
   <section class="card" id="v-conv">
@@ -291,7 +298,7 @@ a{color:var(--accent)}
 const $=id=>document.getElementById(id);
 // Anahtarsız çalışma: Cloudflare aracı sunucusunun adresi (boşsa kullanıcıdan anahtar istenir)
 const PROXY="https://tercuman-api.akcicekr.workers.dev/";
-const DEF={key:"",fast:"gemini-3.5-flash-lite",good:"gemini-3.8-flash",mode:"fast",arLang:"ar-LY",auto:true,rate:0.9};
+const DEF={key:"",fast:"gemini-3.5-flash-lite",good:"gemini-3.8-flash",mode:"fast",arLang:"ar-LY",lang:"ly",auto:true,rate:0.9};
 let cfg=Object.assign({},DEF);
 try{Object.assign(cfg,JSON.parse(localStorage.getItem("lt_cfg")||"{}"));}catch(e){}
 function saveCfg(){try{localStorage.setItem("lt_cfg",JSON.stringify(cfg));}catch(e){}}
@@ -413,6 +420,17 @@ async function toTurkish(text,onLate){
   if(r&&!r.fb)memoPut(k,r);
   return r;
 }
+/* ---------- İngilizce (Google Çeviri: hızlı, kota yok; olmazsa yapay zekâ) ---------- */
+const isEn=()=>cfg.lang==="en";
+const P_EN=(t,from,to)=>`Translate the following ${from} text into natural ${to}. Return only JSON: {"t":"translation"}\n\nText:\n`+t;
+async function enTrans(text,sl,tl){
+  lastReq={text,sl,tl};
+  const k=sl+tl+"|"+normTr(text);const m=memoGet(k);if(m)return m.t;
+  let out;
+  try{out=(await gtrans(text,sl,tl)).text;}
+  catch(e){const r=await gemini(P_EN(text,sl==="tr"?"Turkish":"English",tl==="tr"?"Turkish":"English"));out=r.t||r.translation||"";if(!out)throw {code:"empty"};}
+  memoPut(k,{t:out});return out;
+}
 async function geminiOnce(model, prompt, imageB64, mime){
   const parts=[{text:prompt}];
   if(imageB64)parts.push({inline_data:{mime_type:mime||"image/jpeg",data:imageB64}});
@@ -483,9 +501,9 @@ function addHist(it){const h=hist();h.unshift(it);try{localStorage.setItem("lt_h
 function renderHist(){
   const h=hist();$("histWrap").hidden=!h.length;const box=$("hist");box.textContent="";
   h.forEach(it=>{const b=document.createElement("button");b.className="item";
-    const a=document.createElement("span");a.className="a";a.textContent=it.ar||"";
+    const a=document.createElement("span");a.className="a"+(it.en?" en":"");a.textContent=it.en||it.ar||"";
     const t=document.createElement("span");t.className="t";t.textContent=it.tr||"";
-    b.append(a,t);b.onclick=()=>{show({tag:"Geçmiş",orig:it.tr,main:it.ar,mainAr:true,latin:it.latin});window.scrollTo({top:0,behavior:"smooth"});};box.append(b);});
+    b.append(a,t);b.onclick=()=>{show(it.en?{tag:"Geçmiş",orig:it.tr,main:it.en,mainAr:false,sp:"en"}:{tag:"Geçmiş",orig:it.tr,main:it.ar,mainAr:true,latin:it.latin});window.scrollTo({top:0,behavior:"smooth"});};box.append(b);});
 }
 $("hclear").onclick=()=>{try{localStorage.removeItem("lt_hist");}catch(e){}renderHist();};
 
@@ -495,9 +513,9 @@ try{lv();speechSynthesis.onvoiceschanged=lv;}catch(e){}
 function speak(text,lang){
   if(!text||!("speechSynthesis" in window))return;
   try{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);
-    const pref=lang==="ar"?["ar-LY","ar-TN","ar-EG","ar-SA","ar"]:["tr-TR","tr"];
+    const pref=lang==="ar"?["ar-LY","ar-TN","ar-EG","ar-SA","ar"]:lang==="en"?["en-US","en-GB","en"]:["tr-TR","tr"];
     let v=null;for(const p of pref){v=voices.find(x=>x.lang&&x.lang.replace("_","-").toLowerCase().startsWith(p.toLowerCase()));if(v)break;}
-    if(v)u.voice=v;u.lang=v?v.lang:(lang==="ar"?"ar-SA":"tr-TR");u.rate=cfg.rate;speechSynthesis.speak(u);}catch(e){}
+    if(v)u.voice=v;u.lang=v?v.lang:(lang==="ar"?"ar-SA":lang==="en"?"en-US":"tr-TR");u.rate=cfg.rate;speechSynthesis.speak(u);}catch(e){}
 }
 
 /* ---------- Speech recognition ---------- */
@@ -524,13 +542,13 @@ function micErr(code){
 
 /* ---------- Conversation ---------- */
 let talking=null, busy=false;
-function bubble(side,main,mainAr,orig,origAr,latin){
+function bubble(side,main,mainAr,orig,origAr,latin,sp){
   const d=document.createElement("div");d.className="bub "+(side==="tr"?"me":"them");
   const a=document.createElement("p");a.className=mainAr?"ar-out":"tr-out";a.textContent=main;
   const l=document.createElement("p");l.className="latin";l.textContent=latin||"";l.hidden=!latin;
   const o=document.createElement("p");o.className="orig"+(origAr?" arx":"");o.textContent=orig;
   const acts=document.createElement("div");acts.className="acts";
-  const s=document.createElement("button");s.className="mini";s.textContent="🔊";s.onclick=()=>speak(a.textContent,mainAr?"ar":"tr");
+  const s=document.createElement("button");s.className="mini";s.textContent="🔊";s.onclick=()=>speak(a.textContent,sp||(mainAr?"ar":"tr"));
   const g=document.createElement("button");g.className="mini";g.textContent="⛶ Büyük";g.onclick=()=>bigShow(a.textContent,mainAr,l.textContent);
   const n=document.createElement("p");n.className="hint";n.hidden=true;
   acts.append(s,g);d.append(a,l,o,n,acts);$("bubbles").prepend(d);
@@ -542,7 +560,11 @@ async function convTranslate(side,text){
   try{
     let fb=false;
     let b=null;
-    if(side==="tr"){const r=await toLibyan(text,x=>{if(b)b.update(x.arabic,x.latin,UPG_NOTE);addHist({tr:text,ar:x.arabic,latin:x.latin});});fb=!!r.fb;
+    if(isEn()){
+      if(side==="tr"){const en=await enTrans(text,"tr","en");bubble("tr",en,false,text,false,"","en");addHist({tr:text,en});if(cfg.auto)speak(en,"en");}
+      else{const tr=await enTrans(text,"en","tr");bubble("ly",tr,false,text,false,"","tr");addHist({tr,en:text});if(cfg.auto)speak(tr,"tr");}
+    }
+    else if(side==="tr"){const r=await toLibyan(text,x=>{if(b)b.update(x.arabic,x.latin,UPG_NOTE);addHist({tr:text,ar:x.arabic,latin:x.latin});});fb=!!r.fb;
       b=bubble("tr",r.arabic,true,text,false,r.latin);if(r.note&&!r.fb)b.update(r.arabic,r.latin,r.note);
       if(!r.fb)addHist({tr:text,ar:r.arabic,latin:r.latin});
       if(cfg.auto)speak(r.arabic,"ar");
@@ -551,7 +573,7 @@ async function convTranslate(side,text){
       if(!r.fb)addHist({tr:r.turkish,ar:r.arabic||text,latin:r.latin});
       if(cfg.auto)speak(r.turkish,"tr");
     }
-    $("convStatus").textContent=fb?"Günlük kota doldu, Google Çeviri ile devam ediliyor (standart Arapça).":"Sıradaki kişi düğmesine basıp konuşabilir.";
+    $("convStatus").textContent=isEn()?"Sıradaki kişi düğmesine basıp konuşabilir.":fb?"Günlük kota doldu, Google Çeviri ile devam ediliyor (standart Arapça).":"Sıradaki kişi düğmesine basıp konuşabilir.";
     $("gtConv").hidden=true;
   }catch(e){$("convStatus").className="status err";$("convStatus").textContent=errText(e);$("gtConv").hidden=!lastReq;}
   busy=false;$("live").textContent="";
@@ -563,9 +585,9 @@ function talk(side){
   if(talking)stopListen();
   try{speechSynthesis.cancel();}catch(e){}
   talking=side;btn.classList.add("rec");
-  $("convStatus").className="status";$("convStatus").textContent=side==="tr"?"Dinliyorum… Bitince tekrar basın veya susun.":"أسمعك… Libyalı konuşabilir.";
-  listen(side==="tr"?"tr-TR":cfg.arLang,
-    t=>{$("live").textContent=t;$("live").className="live"+(side==="ly"?" ar":"");},
+  $("convStatus").className="status";$("convStatus").textContent=side==="tr"?"Dinliyorum… Bitince tekrar basın veya susun.":isEn()?"I'm listening… Please speak English.":"أسمعك… Libyalı konuşabilir.";
+  listen(side==="tr"?"tr-TR":isEn()?"en-US":cfg.arLang,
+    t=>{$("live").textContent=t;$("live").className="live"+(side==="ly"&&!isEn()?" ar":"");},
     t=>convTranslate(side,t),
     err=>{btn.classList.remove("rec");talking=null;if(err){$("convStatus").className="status err";$("convStatus").textContent=micErr(err);$("live").textContent="";}});
 }
@@ -573,20 +595,24 @@ $("talkTr").onclick=()=>talk("tr");$("talkLy").onclick=()=>talk("ly");
 
 /* ---------- Text ---------- */
 let dir="tr";
-function setDir(d){dir=d;$("dirLabel").textContent=d==="tr"?"Türkçe → Libya Arapçası":"Libya Arapçası → Türkçe";
-  $("src").className=d==="tr"?"":"ar";$("src").placeholder=d==="tr"?"Türkçe yazın…":"اكتب هنا… (Latin harfle de olur)";}
+function setDir(d){dir=d;const L=isEn()?"İngilizce":"Libya Arapçası";$("dirLabel").textContent=d==="tr"?"Türkçe → "+L:L+" → Türkçe";
+  $("src").className=d==="tr"||isEn()?"":"ar";$("src").placeholder=d==="tr"?"Türkçe yazın…":isEn()?"Type in English…":"اكتب هنا… (Latin harfle de olur)";}
 $("swap").onclick=()=>setDir(dir==="tr"?"ly":"tr");
 $("clear").onclick=()=>{$("src").value="";$("src").focus();};
 $("mic").onclick=()=>{
   const b=$("mic");if(b.classList.contains("rec")){stopListen();return;}
   b.classList.add("rec");
-  listen(dir==="tr"?"tr-TR":cfg.arLang,t=>{$("src").value=t;},()=>{},err=>{b.classList.remove("rec");if(err)status(micErr(err),true);});
+  listen(dir==="tr"?"tr-TR":isEn()?"en-US":cfg.arLang,t=>{$("src").value=t;},()=>{},err=>{b.classList.remove("rec");if(err)status(micErr(err),true);});
 };
 $("go").onclick=async()=>{
   const text=$("src").value.trim();if(!text){$("src").focus();return;}
   $("go").disabled=true;status("Çevriliyor…",false,true);
   try{
-    if(dir==="tr"){
+    if(isEn()){
+      if(dir==="tr"){const en=await enTrans(text,"tr","en");show({tag:"İngilizce",orig:text,main:en,mainAr:false,sp:"en"});addHist({tr:text,en});}
+      else{const tr=await enTrans(text,"en","tr");show({tag:"Türkçe",orig:text,main:tr,mainAr:false,sp:"tr"});addHist({tr,en:text});}
+    }
+    else if(dir==="tr"){
       const late=x=>{if(last&&last.orig===text)show({tag:"Libya Arapçası",orig:text,main:x.arabic,mainAr:true,latin:x.latin,note:UPG_NOTE});addHist({tr:text,ar:x.arabic,latin:x.latin});};
       const r=await toLibyan(text,late);
       show({tag:r.fb?"Arapça (Google Çeviri)":"Libya Arapçası",orig:text,main:r.arabic,mainAr:true,latin:r.latin,note:r.note});if(!r.fb)addHist({tr:text,ar:r.arabic,latin:r.latin});}
@@ -613,14 +639,16 @@ $("camFile").onchange=e=>pick(e.target.files[0]);$("galFile").onchange=e=>pick(e
 $("photoGo").onclick=async()=>{
   if(!img)return;$("photoGo").disabled=true;status("Resim okunuyor…",false,true);
   try{
-    const r=await gemini(RULES+`\n\nResimdeki tüm yazıları oku. Yazı Arapçaysa Türkçeye çevir; Türkçeyse Libya Arapçasına çevir; başka bir dildeyse Türkçeye çevir. Yazı yoksa resimde ne olduğunu kısaca Türkçe anlat. JSON: {"source_lang":"ar|tr|other|none","original":"resimdeki yazı aynen, satır düzeniyle","translation":"çeviri","translation_is_arabic":true veya false,"latin":"çeviri Arapçaysa Türkçe harfli okunuşu, değilse boş","note":"kısa Türkçe not, yoksa boş"}`,img,"image/jpeg");
-    show({tag:"Resimden",orig:r.original,origAr:r.source_lang==="ar",main:r.translation,mainAr:!!r.translation_is_arabic,latin:r.latin,note:r.note});
+    const r=await gemini(isEn()?P_PHOTO_EN:RULES+`\n\nResimdeki tüm yazıları oku. Yazı Arapçaysa Türkçeye çevir; Türkçeyse Libya Arapçasına çevir; başka bir dildeyse Türkçeye çevir. Yazı yoksa resimde ne olduğunu kısaca Türkçe anlat. JSON: {"source_lang":"ar|tr|other|none","original":"resimdeki yazı aynen, satır düzeniyle","translation":"çeviri","translation_is_arabic":true veya false,"latin":"çeviri Arapçaysa Türkçe harfli okunuşu, değilse boş","note":"kısa Türkçe not, yoksa boş"}`,img,"image/jpeg");
+    show({tag:"Resimden",orig:r.original,origAr:r.source_lang==="ar",main:r.translation,mainAr:!!r.translation_is_arabic,latin:r.latin,note:r.note,sp:isEn()&&r.source_lang==="tr"?"en":undefined});
     status("");
   }catch(e){status(errText(e),true);}
   $("photoGo").disabled=false;
 };
 
 /* ---------- Live camera ---------- */
+const P_PHOTO_EN=`You are an expert translator for a Turkish engineer. Read ALL text in the image (signs, labels, manuals, nameplates, invoices, screens). If the text is English (or any language other than Turkish), translate it into natural Turkish; keep technical terms (electrical, pump, construction) accurate. If the text is Turkish, translate it into English. If there is no text, briefly describe the image in Turkish. Return only JSON: {"source_lang":"en|tr|other|none","original":"text exactly as in the image, keeping line breaks","translation":"translation","translation_is_arabic":false,"latin":"","note":"short Turkish note if needed, else empty"}`;
+const P_CAM_EN=()=>`This is a camera frame. Find every text block (sign, line, paragraph, label, nameplate, button text). If the text is English or any language other than Turkish, translate it into Turkish; if it is Turkish, translate it into English. Keep technical terms accurate. Give each block's position as box_2d: [ymin, xmin, ymax, xmax], normalized 0-1000. Merge lines of the same sentence into one block, at most 15 blocks. Return only JSON: {"blocks":[{"box_2d":[ymin,xmin,ymax,xmax],"original":"…","translation":"…","translation_is_arabic":false}]}. If there is no text: {"blocks":[]}.`;
 let stream=null,fw=0,fh=0,camBusy=false;
 const P_CAM=()=>RULES+`\n\nBu bir kamera görüntüsü. Görüntüdeki her yazı bloğunu (tabela, satır, paragraf, etiket, düğme yazısı) bul ve çevir. Yazı Arapçaysa Türkçeye; Türkçeyse Libya Arapçasına; başka bir dildeyse Türkçeye çevir. Her bloğun görüntüdeki yerini box_2d olarak ver: [ymin, xmin, ymax, xmax], 0-1000 arası normalize. Aynı cümleye ait satırları tek blokta birleştir, en fazla 15 blok. JSON: {"blocks":[{"box_2d":[ymin,xmin,ymax,xmax],"original":"…","translation":"…","translation_is_arabic":true veya false}]}. Yazı yoksa {"blocks":[]}.`;
 function camMsg(t){$("camMsg").textContent=t;}
@@ -675,7 +703,7 @@ async function camShot(){
   const b64=u.toDataURL("image/jpeg",0.82).split(",")[1];
   $("camShot").disabled=true;camMsg("Okunuyor ve çevriliyor…");
   try{
-    const r=await gemini(P_CAM(),b64,"image/jpeg",{reserve:true});const blocks=(r&&r.blocks)||[];
+    const r=await gemini(isEn()?P_CAM_EN():P_CAM(),b64,"image/jpeg",{reserve:true});const blocks=(r&&r.blocks)||[];
     camDraw(blocks);
     if(blocks.length){
       const ar=blocks.filter(b=>b.translation_is_arabic).length>blocks.length/2;
@@ -691,13 +719,28 @@ window.addEventListener("resize",()=>{if(!$("cam").hidden)camFit();});
 document.addEventListener("visibilitychange",()=>{if(document.hidden&&stream)camClose();});
 
 /* ---------- Result actions ---------- */
-$("speak").onclick=()=>last&&speak(last.main,last.mainAr?"ar":"tr");
+$("speak").onclick=()=>last&&speak(last.main,last.sp||(last.mainAr?"ar":"tr"));
 $("copy").onclick=()=>{if(!last)return;const t=last.main+(last.latin?"\n"+last.latin:"");
   (navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>{$("copy").textContent="Kopyalandı ✓";setTimeout(()=>$("copy").textContent="Kopyala",1500);}).catch(()=>{});};
 function bigShow(main,ar,latin){$("bigMain").textContent=main;$("bigMain").className=ar?"ar-out":"tr-out";$("bigLatin").textContent=latin||"";$("bigView").hidden=false;}
 $("big").onclick=()=>last&&bigShow(last.main,last.mainAr,last.latin);
 $("bigClose").onclick=()=>$("bigView").hidden=true;
 ["gtConv","gtText","gtOut"].forEach(id=>$(id).onclick=openGT);
+
+/* ---------- Karşı dil: Libya Arapçası / İngilizce ---------- */
+function applyLang(){
+  const en=isEn();
+  $("lgLy").setAttribute("aria-pressed",!en);$("lgEn").setAttribute("aria-pressed",en);
+  const t=$("talkLy");t.classList.toggle("en",en);
+  t.querySelector(".lbl").textContent=en?"Speak English":"تكلم بالليبي";
+  t.querySelector("small").textContent=en?"İngilizce konuşan":"Libyalı konuşuyor";
+  setDir(dir);
+  $("bubbles").textContent="";$("live").textContent="";
+  $("convStatus").className="status";$("convStatus").textContent="Kendi düğmenize basın ve konuşun. Bitince otomatik çevirip sesli okur.";
+}
+$("lgLy").onclick=()=>{cfg.lang="ly";saveCfg();applyLang();};
+$("lgEn").onclick=()=>{cfg.lang="en";saveCfg();applyLang();};
+applyLang();
 
 /* ---------- Tabs ---------- */
 document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{

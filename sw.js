@@ -1,5 +1,5 @@
 // Uygulama kabuğunu önbelleğe alır; çeviri için yine internet gerekir.
-const CACHE = "lt-v2";
+const CACHE = "lt-v3";
 const SHELL = ["./", "index.html", "phrases.js", "manifest.webmanifest", "icon-192.png", "icon-512.png"];
 
 self.addEventListener("install", e => {
