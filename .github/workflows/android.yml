@@ -1,0 +1,39 @@
+name: Android APK
+on:
+  push:
+    paths: ['android.tar.xz', '.github/workflows/android.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Build APK
+        run: |
+          mkdir -p build-android
+          tar -xJf android.tar.xz -C build-android
+          mkdir -p build-android/app/src/main/res/mipmap-xxxhdpi && cp icon-192.png build-android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+          cd build-android
+          VC=${{ github.run_number }} gradle --no-daemon assembleRelease
+          cp app/build/outputs/apk/release/app-release.apk ../tercuman-kulaklik.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tercuman-kulaklik
+          path: tercuman-kulaklik.apk
+      - name: Commit APK
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git pull --rebase
+          git add tercuman-kulaklik.apk
+          git commit -m "APK derlendi (#${{ github.run_number }})" || exit 0
+          git push
