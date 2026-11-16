@@ -143,6 +143,9 @@ a{color:var(--accent)}
 .mitem.mine{opacity:.55}.mh{font-size:.75rem;color:var(--muted,#777)}
 .mo{font-size:.9rem;color:var(--muted,#666);margin:4px 0}.mo.ar{direction:rtl;text-align:right}
 .mt{font-size:1.15rem;font-weight:600;line-height:1.35}
+.autobtn{flex:1;margin-bottom:10px;background:var(--soft);color:var(--accent);border:1px solid var(--accent);font-weight:600}
+.autobtn.on{background:var(--accent);color:var(--accent-ink)}
+.conv.dim{opacity:.45}
 </style>
 </head>
 <body>
@@ -179,6 +182,7 @@ a{color:var(--accent)}
 
   <!-- CONVERSATION -->
   <section class="card" id="v-conv">
+    <div class="meet-top"><span class="mdot" id="cDot"></span><button class="btn autobtn" id="autoConv">🔄 Otomatik konuşma (düğmesiz) — başlat</button></div>
     <div class="conv">
       <button class="talk tr" id="talkTr"><span class="mic">🎤</span><span class="lbl">Türkçe konuş</span><small>Ben konuşuyorum</small></button>
       <button class="talk ly" id="talkLy"><span class="mic">🎤</span><span class="lbl">تكلم بالليبي</span><small>Libyalı konuşuyor</small></button>
@@ -313,6 +317,9 @@ a{color:var(--accent)}
       </select>
       <span class="hint">Telefon Libya ağzını iyi algılamazsa diğerlerini deneyin.</span></div>
     <label class="check"><input type="checkbox" id="sAuto"> Konuşmada çeviriyi otomatik sesli oku</label>
+    <div class="field" id="mlBox" hidden><label>📦 İnternetsiz dil paketleri</label>
+      <button class="btn ghost" id="mlGet" type="button">Türkçe–Arapça–İngilizce paketlerini indir (~90 MB, Wi‑Fi önerilir)</button>
+      <span class="hint" id="mlInfo">İndirilince hızlı çeviri internetsiz ve anında olur; Libya ağzıyla düzeltme internet varken arkadan gelir.</span></div>
     <div class="field" id="nativeBox" hidden><label>🎧 Kulaklık ayrımı</label>
       <label class="check"><input type="checkbox" id="sSplit"> Kulaklık takılıyken: Türkçe kulaklıktan, Arapça/İngilizce telefon hoparlöründen</label>
       <select id="sRoute"><option value="media">Yöntem 1 – Normal</option><option value="call">Yöntem 2 – Arama modu</option><option value="alarm">Yöntem 3 – Alarm kanalı (hoparlör + kulaklık)</option></select>
@@ -353,7 +360,7 @@ const FALLBACK=["gemini-3.5-flash-lite","gemini-3.1-flash-lite","gemini-3-flash-
 const isGemma=m=>/^gemma-/.test(m);
 const GEMMA_TIMEOUT=90000;
 const CAM_EXTRA="gemini-3.8-flash";
-const REQ_TIMEOUT=7000, AI_WAIT=3000;
+const REQ_TIMEOUT=7000, AI_WAIT=1000;
 /* Google Çeviri uygulamasına aktarma (uygulamadaki çevrimdışı dil paketleriyle çalışır) */
 let lastReq=null;
 function openGT(){
@@ -392,7 +399,26 @@ async function gemini(prompt, imageB64, mime, opts){
   throw lastErr||{code:"busy"};
 }
 /* Google Çeviri yedeği: yapay zekâ kotası bitince devreye girer (standart Arapça) */
+/* İnternetsiz dil paketi (Android uygulamasında Google ML Kit) */
+const mlWait={};let mlSeq=0;
+window.__ltMl=(id,ok,text)=>{const w=mlWait[id];if(!w)return;delete mlWait[id];ok?w.res(text):w.rej(text);};
+function mlTrans(q,sl,tl,ms){
+  return new Promise((res,rej)=>{const id="m"+(++mlSeq);mlWait[id]={res,rej};
+    setTimeout(()=>{if(mlWait[id]){delete mlWait[id];rej("timeout");}},ms);
+    try{window.LTNative.mlTranslate(id,q,sl,tl);}catch(e){delete mlWait[id];rej("bridge");}});
+}
+const ML_LANGS=["tr","ar","en"];
 async function gtrans(q,sl,tl){
+  const N=window.LTNative;
+  if(N&&N.mlTranslate&&ML_LANGS.includes(tl)){
+    let s=sl;if(s==="auto")s=/[\u0600-\u06FF]/.test(q)?"ar":null;
+    if(s&&ML_LANGS.includes(s)&&s!==tl){
+      try{const t=await mlTrans(q,s,tl,navigator.onLine?1500:8000);if(t)return {text:t,tgtLatin:"",srcLatin:"",offline:true};}catch(e){}
+    }
+  }
+  return await gtransNet(q,sl,tl);
+}
+async function gtransNet(q,sl,tl){
   const u="https://translate.googleapis.com/translate_a/single?client=gtx&sl="+sl+"&tl="+tl+"&dt=t&dt=rm&q="+encodeURIComponent(q);
   const r=await fetch(u);if(!r.ok)throw {code:"gt"};
   const j=await r.json();const segs=(j&&j[0])||[];
@@ -404,7 +430,7 @@ async function gtrans(q,sl,tl){
 const GT_NOTE="Günlük yapay zekâ kotası doldu; bu çeviri Google Çeviri'den (standart Arapça). Kota her sabah ~09:00'da yenilenir.";
 const canFallback=e=>!(e&&(e.code==="net"||e.code==="nokey"));
 const SLOW_NOTE="Yapay zekâ geç cevap verdi; beklememeniz için Google Çeviri kullanıldı (standart Arapça).";
-const LATE_NOTE="Önce Google Çeviri gösterildi; Libya ağzıyla çeviri gelince kendiliğinden güncellenir…";
+const LATE_NOTE="Hızlı çeviri gösterildi; Libya ağzıyla çeviri gelince kendiliğinden güncellenir…";
 // Yapay zekâ AI_WAIT içinde cevap vermezse Google Çeviri sonucu gösterilir;
 // yapay zekâ (ör. yavaş Gemma) sonradan cevap verirse onLate ile ekrandaki çeviri güncellenir
 async function hedge(aiCall,gtCall,onLate){
@@ -547,6 +573,7 @@ try{lv();speechSynthesis.onvoiceschanged=lv;}catch(e){}
 const NATIVE=window.LTNative||null;
 function speak(text,lang,force){
   if(!text)return;
+  try{if(M.on&&M.purpose==="conv")M.muteUntil=Date.now()+Math.min(20000,900+text.length*90);}catch(e){}
   if(NATIVE){try{const tag=lang==="ar"?"ar-SA":lang==="en"?"en-US":"tr-TR";
     const route=force||(cfg.split?(lang==="tr"?"ear":(cfg.spkDev||"spk")):"auto");
     NATIVE.speak(text,tag,route,cfg.route||"media",Number(cfg.rate)||0.9);}catch(e){}return;}
@@ -554,7 +581,7 @@ function speak(text,lang,force){
   try{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);
     const pref=lang==="ar"?["ar-LY","ar-TN","ar-EG","ar-SA","ar"]:lang==="en"?["en-US","en-GB","en"]:["tr-TR","tr"];
     let v=null;for(const p of pref){v=voices.find(x=>x.lang&&x.lang.replace("_","-").toLowerCase().startsWith(p.toLowerCase()));if(v)break;}
-    if(v)u.voice=v;u.lang=v?v.lang:(lang==="ar"?"ar-SA":lang==="en"?"en-US":"tr-TR");u.rate=cfg.rate;speechSynthesis.speak(u);}catch(e){}
+    if(v)u.voice=v;u.lang=v?v.lang:(lang==="ar"?"ar-SA":lang==="en"?"en-US":"tr-TR");u.rate=cfg.rate;u.onend=()=>window.__ltSpeakDone&&window.__ltSpeakDone();speechSynthesis.speak(u);}catch(e){}
 }
 
 /* ---------- Speech recognition ---------- */
@@ -639,7 +666,7 @@ function talk(side){
     t=>convTranslate(side,t),
     err=>{btn.classList.remove("rec");talking=null;if(err){$("convStatus").className="status err";$("convStatus").textContent=micErr(err);$("live").textContent="";}});
 }
-$("talkTr").onclick=()=>talk("tr");$("talkLy").onclick=()=>talk("ly");
+$("talkTr").onclick=()=>{if(M.on&&M.purpose==="conv")meetStop();talk("tr");};$("talkLy").onclick=()=>{if(M.on&&M.purpose==="conv")meetStop();talk("ly");};
 
 /* ---------- Text ---------- */
 let dir="tr";
@@ -799,7 +826,28 @@ ${ctx?"Earlier in this meeting (context only, do not translate again):\n"+ctx+"\
 const M={on:false,engine:"ai",stream:null,ctx:null,src:null,proc:null,queue:[],busy:false,
   seg:null,pre:[],speechMs:0,silMs:0,noise:0.006,rate:16000,calls:0,lock:null,last:[],fixLang:"ar-LY"};
 const MEET_MAX_MS=12000,MEET_SIL_MS=900,MEET_MIN_MS=600,MEET_PRE=6;
-function mStatus(t,cls){$("mStatus").textContent=t;$("mStatus").className="status"+(cls?" "+cls:"");}
+function mStatus(t,cls){const el=$(M.purpose==="conv"?"convStatus":"mStatus");el.textContent=t;el.className="status"+(cls?" "+cls:"");}
+function mDot(on){["mDot","cDot"].forEach(i=>{const d=$(i);if(d)d.classList.toggle("rec",!!on);});}
+window.__ltSpeakDone=()=>{if((M.muteUntil||0)>Date.now())M.muteUntil=Date.now()+350;};
+const P_CONVA=()=>`You are a live two-way interpreter between a Turkish engineer and ${isEn()?"an English speaker":"a Libyan speaker (Tripoli dialect)"}. The audio is one short utterance from either of them.
+1) Transcribe exactly what is said, in its original script.
+2) If the speech is Turkish: translate it into ${isEn()?"natural spoken English":"natural spoken Libyan Arabic (Tripoli dialect) in Arabic script, and also give a Latin-letter pronunciation a Turk can read aloud in \"latin\""}, and put the translation in "out".
+3) If the speech is Arabic, English or another language: translate it into natural Turkish and put it in "out".
+Keep technical terms (electrical, pumps, generators, construction), numbers and money accurate. If there is no clear speech (noise, silence, cough), return {"lang":"none"}. Never invent words that are not in the audio.
+Return only JSON: {"lang":"tr|ar|en|other|none","original":"...","out":"...","latin":"..."}`;
+function convAuto(r){
+  if(!r||!r.lang||r.lang==="none"||!r.out)return;
+  if(r.lang==="tr"){
+    const tgt=isEn()?"en":"ar";
+    bubble("tr",r.out,!isEn(),r.original||"",false,r.latin||"",tgt);
+    addHist(isEn()?{tr:r.original,en:r.out}:{tr:r.original,ar:r.out,latin:r.latin});
+    if(cfg.auto)speak(r.out,tgt);
+  }else{
+    bubble("ly",r.out,false,r.original||"",r.lang==="ar","","tr");
+    addHist(isEn()?{tr:r.out,en:r.original}:{tr:r.out,ar:r.original});
+    if(cfg.auto)speak(r.out,"tr");
+  }
+}
 function mAdd(it){
   const box=$("mList");const d=document.createElement("div");d.className="mitem"+(it.lang==="tr"?" mine":"");
   const h=document.createElement("div");h.className="mh";
@@ -838,6 +886,7 @@ function down(input,from,to){ // basit örnek seyreltme
 }
 function onAudio(ev){
   if(!M.on)return;
+  if(Date.now()<(M.muteUntil||0)){if(M.seg){M.seg=null;M.speechMs=0;mDot(false);}M.pre=[];return;}
   const raw=ev.inputBuffer.getChannelData(0);
   const pcm=down(raw,M.ctx.sampleRate,M.rate);
   let sum=0;for(let i=0;i<raw.length;i++)sum+=raw[i]*raw[i];
@@ -847,15 +896,15 @@ function onAudio(ev){
   if(!M.seg){
     if(!speech)M.noise=M.noise*0.95+rms*0.05;
     M.pre.push(pcm);if(M.pre.length>MEET_PRE)M.pre.shift();
-    if(speech){M.seg=[...M.pre];M.pre=[];M.speechMs=ms;M.silMs=0;M.segMs=ms;$("mDot").classList.add("rec");}
+    if(speech){M.seg=[...M.pre];M.pre=[];M.speechMs=ms;M.silMs=0;M.segMs=ms;mDot(true);}
     return;
   }
   M.seg.push(pcm);M.segMs+=ms;
   if(speech){M.speechMs+=ms;M.silMs=0;}else M.silMs+=ms;
-  if(M.silMs>=MEET_SIL_MS||M.segMs>=MEET_MAX_MS)mCut();
+  if(M.silMs>=(M.purpose==="conv"?650:MEET_SIL_MS)||M.segMs>=MEET_MAX_MS)mCut();
 }
 function mCut(){
-  const seg=M.seg,sp=M.speechMs;M.seg=null;M.speechMs=0;M.silMs=0;$("mDot").classList.remove("rec");
+  const seg=M.seg,sp=M.speechMs;M.seg=null;M.speechMs=0;M.silMs=0;mDot(false);
   if(!seg||sp<MEET_MIN_MS)return;
   M.queue.push(wavB64(seg,M.rate));mPump();
 }
@@ -864,12 +913,15 @@ async function mPump(){
   while(M.queue.length){
     if(M.queue.length>4)M.queue.splice(0,M.queue.length-4); // geride kalırsa en eskileri at
     const b64=M.queue.shift();
+    const conv=M.purpose==="conv";
     mStatus("🎧 Dinliyorum… ("+(M.queue.length?M.queue.length+" bekleyen, ":"")+"çevriliyor)");
     try{
-      const r=await gemini(P_MEET(M.last.join("\n")),b64,"audio/wav");
+      const r=await gemini(conv?P_CONVA():P_MEET(M.last.join("\n")),b64,"audio/wav");
       M.calls++;
-      if(r&&r.lang&&r.lang!=="none"&&(r.original||r.tr))mAdd(r);
+      if(conv)convAuto(r);
+      else if(r&&r.lang&&r.lang!=="none"&&(r.original||r.tr))mAdd(r);
     }catch(e){
+      if(e.code==="quota"&&conv){meetStop();mStatus("Günlük yapay zekâ kotası doldu. Otomatik mod kapandı; düğmelerle konuşmaya devam edin.","err");break;}
       if(e.code==="quota"){mAdd({lang:"other",original:"",tr:"",note:"Günlük yapay zekâ kotası doldu → sınırsız 'sabit dil' moduna geçildi."});mSwitchFixed();break;}
       if(e.code==="net"){mStatus("İnternet yok. Bağlantı gelince devam eder.","err");}
     }
@@ -896,14 +948,14 @@ function mStopAI(){
 function mFixedLoop(){
   if(!M.on||M.engine!=="fixed")return;
   const lang=M.fixLang;
-  $("mDot").classList.add("rec");
+  mDot(true);
   listen(lang,t=>{$("mLive").textContent=t;},async t=>{
     $("mLive").textContent="";
     try{
       if(lang.startsWith("en")){const tr=await enTrans(t,"en","tr");mAdd({lang:"en",original:t,tr});}
       else{const r=await toTurkish(t);mAdd({lang:"ar",original:t,tr:r.turkish||""});}
     }catch(e){mAdd({lang:"other",original:t,tr:"",note:"Çevrilemedi"});}
-  },()=>{$("mDot").classList.remove("rec");if(M.on&&M.engine==="fixed")setTimeout(mFixedLoop,250);});
+  },()=>{mDot(false);if(M.on&&M.engine==="fixed")setTimeout(mFixedLoop,250);});
 }
 function mSwitchFixed(){
   mStopAI();M.engine="fixed";
@@ -912,10 +964,26 @@ function mSwitchFixed(){
   mStatus("🎧 Dinliyorum (sabit dil: "+(M.fixLang.startsWith("en")?"İngilizce":"Libya Arapçası")+")");
   mFixedLoop();
 }
-async function meetStart(){
-  M.on=true;M.calls=0;M.last=[];M.queue=[];
-  $("mGo").textContent="■ Dinlemeyi durdur";$("mGo").classList.add("stop");
+function autoBtns(){
+  const meet=M.on&&M.purpose==="meet",conv=M.on&&M.purpose==="conv";
+  $("mGo").textContent=meet?"■ Dinlemeyi durdur":"▶ Dinlemeyi başlat";$("mGo").classList.toggle("stop",meet);
+  $("autoConv").textContent=conv?"🔄 Otomatik konuşma AÇIK — kapatmak için dokunun":"🔄 Otomatik konuşma (düğmesiz) — başlat";
+  $("autoConv").classList.toggle("on",conv);
+  document.querySelector("#v-conv .conv").classList.toggle("dim",conv);
+}
+async function meetStart(purpose){
+  if(M.on)meetStop();
+  purpose=purpose||"meet";
+  M.purpose=purpose;M.on=true;M.calls=0;M.last=[];M.queue=[];M.muteUntil=0;
+  autoBtns();
   keepAwake(true);
+  if(purpose==="conv"){
+    if(quotaPaused()){meetStop();mStatus("Yapay zekâ kotası dolu; otomatik mod şu an çalışmaz. Düğmelerle konuşun.","err");return;}
+    M.engine="ai";
+    try{await mStartAI();mStatus("🎧 Dinliyorum… Sırayla konuşun, dil kendiliğinden algılanır.");}
+    catch(e){meetStop();mStatus("Mikrofon açılamadı ("+(e&&e.name||"hata")+").","err");}
+    return;
+  }
   const mode=$("mMode").value;
   if(mode==="ai"&&!quotaPaused()){
     M.engine="ai";
@@ -926,15 +994,16 @@ async function meetStart(){
 }
 function meetStop(){
   M.on=false;mStopAI();stopListen();keepAwake(false);
-  $("mGo").textContent="▶ Dinlemeyi başlat";$("mGo").classList.remove("stop");$("mDot").classList.remove("rec");
+  autoBtns();mDot(false);
   $("mLevel").style.width="0";$("mLive").textContent="";
   mStatus("Durduruldu. "+(M.calls?M.calls+" parça yapay zekâyla çevrildi.":""));
 }
-$("mGo").onclick=()=>M.on?meetStop():meetStart();
+$("mGo").onclick=()=>(M.on&&M.purpose==="meet")?meetStop():meetStart("meet");
+$("autoConv").onclick=()=>(M.on&&M.purpose==="conv")?meetStop():meetStart("conv");
 $("mClear").onclick=()=>{$("mList").textContent="";M.log=[];};
 $("mCopy").onclick=async()=>{const t=(M.log||[]).join("\n");try{await navigator.clipboard.writeText(t);mStatus("Tutanak kopyalandı ✓");}catch(e){mStatus("Kopyalanamadı.","err");}};
 $("mMode").value=cfg.meetMode||"ai";$("mSpeak").checked=!!cfg.meetSpeak;
-$("mMode").onchange=()=>{cfg.meetMode=$("mMode").value;saveCfg();if(M.on){meetStop();meetStart();}};
+$("mMode").onchange=()=>{cfg.meetMode=$("mMode").value;saveCfg();if(M.on&&M.purpose==="meet"){meetStop();meetStart("meet");}};
 $("mSpeak").onchange=()=>{cfg.meetSpeak=$("mSpeak").checked;saveCfg();};
 document.addEventListener("visibilitychange",()=>{if(document.hidden&&M.on&&M.engine==="ai")mStatus("Ekran kapanırsa dinleme durabilir; uygulamayı açık tutun.","err");});
 
@@ -981,6 +1050,12 @@ $("sSave").onclick=()=>{cfg.key=$("sKey").value.trim();cfg.fast=$("sFast").value
   $("settings").hidden=true;$("setup").hidden=!!(cfg.key||PROXY);status("Ayarlar kaydedildi.");setTimeout(()=>status(""),1500);};
 $("setupSave").onclick=()=>{const k=$("setupKey").value.trim();if(!k)return;cfg.key=k;saveCfg();$("setup").hidden=true;status("Hazır! Konuşma düğmesine basıp deneyin.");};
 
+if(NATIVE&&NATIVE.mlTranslate){
+  $("mlBox").hidden=false;
+  window.__ltMlStatus=(n,t)=>{$("mlInfo").textContent=n<0?"İndirme başarısız; internet bağlantısını kontrol edip tekrar deneyin.":n>=t?"✓ Dil paketleri hazır. Çeviri internetsiz de çalışır.":"İndiriliyor… "+n+"/"+t;if(n>=t){cfg.mlReady=true;saveCfg();}};
+  $("mlGet").onclick=()=>{$("mlInfo").textContent="İndiriliyor… (birkaç dakika sürebilir)";NATIVE.mlPrepare();};
+  if(cfg.mlReady)$("mlInfo").textContent="✓ Dil paketleri hazır. Çeviri internetsiz de çalışır.";
+}
 if(NATIVE){
   $("tEar").onclick=()=>{cfg.route=$("sRoute").value;speak("Bu ses kulaklıktan gelmeli.","tr","ear");};
   $("tSpk").onclick=()=>{cfg.route=$("sRoute").value;speak("هذا الصوت لازم يطلع من سماعة التليفون","ar",$("sSpk").value);};
