@@ -1,0 +1,72 @@
+name: iOS TestFlight
+on:
+  push:
+    paths: ['ios.tar.xz', '.github/workflows/ios.yml']
+  workflow_dispatch:
+  schedule:
+    # TestFlight sürümleri 90 gün geçerli: her 2 ayda bir yeni sürüm yükle
+    - cron: '17 5 1 */2 *'
+jobs:
+  build:
+    runs-on: macos-latest
+    env:
+      TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select newest Xcode
+        run: |
+          X=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)
+          echo "Using $X"; sudo xcode-select -s "$X"; xcodebuild -version
+      - name: Generate project
+        run: |
+          brew install xcodegen
+          mkdir -p ios-src && tar -xJf ios.tar.xz -C ios-src
+          python3 -m pip install --quiet --break-system-packages pillow || python3 -m pip install --quiet --user pillow
+          python3 - <<'PY'
+          from PIL import Image
+          im=Image.open('icon-512.png').convert('RGBA')
+          bg=im.getpixel((5,5))[:3]
+          big=im.resize((1024,1024),Image.LANCZOS)
+          out=Image.new('RGB',(1024,1024),bg); out.paste(big,(0,0),big)
+          out.save('ios-src/Sources/Assets.xcassets/AppIcon.appiconset/icon-1024.png')
+          PY
+          cd ios-src && xcodegen generate
+      - name: Compile check (simulator, unsigned)
+        working-directory: ios-src
+        run: |
+          xcodebuild -project LibyaTercuman.xcodeproj -scheme LibyaTercuman -configuration Release \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO build | tail -40
+          test ${PIPESTATUS[0]} -eq 0
+      - name: Archive and upload to TestFlight
+        if: env.ASC_KEY_P8 != '' && env.TEAM_ID != ''
+        working-directory: ios-src
+        run: |
+          KEY="$RUNNER_TEMP/AuthKey.p8"
+          printf '%s' "$ASC_KEY_P8" | base64 -d > "$KEY" 2>/dev/null || printf '%s' "$ASC_KEY_P8" > "$KEY"
+          BUILD=$(( ${{ github.run_number }} + 100 ))
+          AUTH="-allowProvisioningUpdates -authenticationKeyPath $KEY -authenticationKeyID $ASC_KEY_ID -authenticationKeyIssuerID $ASC_ISSUER_ID"
+          xcodebuild -project LibyaTercuman.xcodeproj -scheme LibyaTercuman -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/app.xcarchive" archive \
+            DEVELOPMENT_TEAM="$TEAM_ID" CURRENT_PROJECT_VERSION="$BUILD" $AUTH | tail -40
+          test ${PIPESTATUS[0]} -eq 0
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>$TEAM_ID</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>uploadSymbols</key><true/>
+          </dict></plist>
+          PLIST
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/app.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" -exportPath "$RUNNER_TEMP/out" $AUTH
+          echo "::notice::Yüklendi: sürüm 1.0 ($BUILD). App Store Connect işledikten sonra TestFlight'ta görünür."
+      - name: Apple keys missing
+        if: env.ASC_KEY_P8 == '' || env.TEAM_ID == ''
+        run: echo "::warning::Apple anahtarları (APPLE_TEAM_ID, ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8) henüz girilmedi. Sadece derleme testi yapıldı, TestFlight'a yüklenmedi."
